@@ -68,6 +68,15 @@ function Orders() {
     loadOrders();
   }, [filters, viewMode, selectedDate, selectedMonth, selectedYear, selectedStoreId]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTimeout]);
+
   // Save filters whenever they change
   useEffect(() => {
     if (isAdmin()) {
@@ -803,10 +812,10 @@ function Orders() {
 
       {/* Create Order Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-2 z-50 overflow-y-auto overflow-x-hidden">
-          <div className="bg-white rounded-t-2xl sm:rounded-lg max-w-2xl w-full p-3 sm:p-4 md:p-5 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto overflow-x-hidden my-0 sm:my-auto pb-safe sm:pb-5">
-            <div className="flex items-center justify-between mb-3 sticky top-0 bg-white pb-2 border-b z-10 min-w-0">
-              <h2 className="text-base sm:text-lg font-bold truncate pr-2">Tạo đơn hàng mới</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-3 z-50 overflow-y-auto overflow-x-hidden">
+          <div className="bg-white rounded-lg max-w-xl w-full max-h-[90vh] flex flex-col my-auto shadow-2xl">
+            <div className="flex items-center justify-between p-2.5 sm:p-3 md:p-4 pb-2 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-sm sm:text-base font-bold truncate pr-2">Tạo đơn hàng mới</h2>
               <button
                 type="button"
                 onClick={() => {
@@ -827,10 +836,11 @@ function Orders() {
                 ×
               </button>
             </div>
-            <form onSubmit={handleSubmitOrder} className="space-y-3 sm:space-y-4 min-w-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 sm:px-3 md:px-4">
+              <form onSubmit={handleSubmitOrder} className="space-y-2 min-w-0 py-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                 <div className="relative">
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">
                     Tên khách hàng
                   </label>
                   <input
@@ -860,7 +870,7 @@ function Orders() {
                       // Delay hiding suggestions to allow click
                       setTimeout(() => setShowCustomerSuggestions(false), 200);
                     }}
-                    className="w-full px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
                     placeholder="Nhập tên khách hàng"
                   />
                   {showCustomerSuggestions && customerSuggestions.length > 0 && (
@@ -884,8 +894,8 @@ function Orders() {
                   )}
                 </div>
                 <div className="relative">
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                    SĐT <span className="text-gray-500 text-[10px]">(tùy chọn)</span>
+                  <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">
+                    SĐT <span className="text-gray-500 text-[9px]">(tùy chọn)</span>
                   </label>
                   <input
                     type="tel"
@@ -938,7 +948,7 @@ function Orders() {
                       // Delay hiding suggestions to allow click
                       setTimeout(() => setShowCustomerSuggestions(false), 200);
                     }}
-                    className="w-full px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
                     placeholder="Nhập số điện thoại"
                   />
                   {showCustomerSuggestions && customerSuggestions.length > 0 && (
@@ -965,13 +975,13 @@ function Orders() {
 
               {isAdmin() && (
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">
                     Gán cho nhân viên
                   </label>
                   <select
                     value={formData.assigned_to}
                     onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
-                    className="w-full px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
                   >
                     <option value="">Chưa gán</option>
                     {users
@@ -986,14 +996,14 @@ function Orders() {
               )}
 
               <div className="min-w-0">
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Sản phẩm</label>
-                <div className="space-y-2 sm:space-y-3 min-w-0">
+                <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">Sản phẩm</label>
+                <div className="space-y-1.5 min-w-0">
                   {formData.items.map((item, index) => (
-                    <div key={index} className="flex flex-col gap-1.5 sm:gap-2 min-w-0">
+                    <div key={index} className="flex gap-1 min-w-0">
                       <select
                         value={item.product_id}
                         onChange={(e) => handleItemChange(index, 'product_id', e.target.value)}
-                        className="w-full min-w-0 px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
                         required
                       >
                         <option value="">Chọn sản phẩm</option>
@@ -1003,34 +1013,32 @@ function Orders() {
                           </option>
                         ))}
                       </select>
-                      <div className="flex gap-1.5 min-w-0">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="0.1"
-                          min="0.1"
-                          placeholder="Số lượng"
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                          className="flex-1 min-w-0 px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
-                          required
-                        />
-                        {formData.items.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(index)}
-                            className="px-3 py-2 flex-shrink-0 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 active:bg-red-300 text-xs sm:text-sm font-medium touch-manipulation"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.1"
+                        min="0.1"
+                        placeholder="SL"
+                        value={item.quantity}
+                        onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                        className="w-20 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
+                        required
+                      />
+                      {formData.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(index)}
+                          className="px-2 py-1.5 flex-shrink-0 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 active:bg-red-300 text-[10px] sm:text-xs font-medium touch-manipulation"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   ))}
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="w-full min-w-0 px-3 py-2 text-sm sm:text-base text-blue-600 hover:text-blue-700 active:text-blue-800 border border-blue-600 rounded-lg hover:bg-blue-50 active:bg-blue-100 font-medium touch-manipulation"
+                    className="w-full min-w-0 px-2 py-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 active:text-blue-800 border border-blue-600 rounded-lg hover:bg-blue-50 active:bg-blue-100 font-medium touch-manipulation"
                   >
                     + Thêm sản phẩm
                   </button>
@@ -1038,14 +1046,14 @@ function Orders() {
               </div>
 
               <div className="min-w-0">
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                  Khuyến mãi <span className="text-gray-500 text-[10px]">(tùy chọn)</span>
+                <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">
+                  Khuyến mãi <span className="text-gray-500 text-[9px]">(tùy chọn)</span>
                 </label>
                 {applicablePromotions.length > 0 ? (
                   <select
                     value={formData.promotion_id}
                     onChange={(e) => setFormData({ ...formData, promotion_id: e.target.value })}
-                    className="w-full min-w-0 px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
+                    className="w-full min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all"
                   >
                     <option value="">Không áp dụng</option>
                     {applicablePromotions.map((promo) => (
@@ -1058,7 +1066,7 @@ function Orders() {
                     ))}
                   </select>
                 ) : (
-                  <div className="w-full min-w-0 px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base bg-gray-50 text-gray-500 break-words">
+                  <div className="w-full min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-50 text-gray-500 break-words">
                     {formData.items.some(item => item.product_id && item.quantity) 
                       ? 'Đang tải...' 
                       : 'Thêm sản phẩm để xem khuyến mãi'}
@@ -1067,20 +1075,20 @@ function Orders() {
               </div>
 
               <div className="min-w-0">
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">Ghi chú</label>
                 <textarea
                   value={formData.note}
                   onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                  className="w-full min-w-0 px-3 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-sm sm:text-base focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all resize-none"
+                  className="w-full min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all resize-none"
                   rows="2"
                   placeholder="Ghi chú (tùy chọn)"
                 />
               </div>
 
-              <div className="flex flex-col gap-2 pt-3 border-t border-gray-200 min-w-0">
+              <div className="flex flex-row gap-1.5 pt-2 border-t border-gray-200 min-w-0">
                 <button
                   type="submit"
-                  className="w-full min-w-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2.5 sm:py-3 rounded-lg hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 font-semibold text-sm sm:text-base shadow-md hover:shadow-lg transition-all touch-manipulation"
+                  className="flex-1 min-w-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2 rounded-lg hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 font-semibold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all touch-manipulation"
                 >
                   ✓ Tạo đơn
                 </button>
@@ -1098,12 +1106,13 @@ function Orders() {
                     });
                     setApplicablePromotions([]);
                   }}
-                  className="w-full min-w-0 bg-gray-200 text-gray-800 py-2.5 sm:py-3 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm sm:text-base transition-all touch-manipulation"
+                  className="flex-1 min-w-0 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-xs sm:text-sm transition-all touch-manipulation"
                 >
                   Hủy
                 </button>
               </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

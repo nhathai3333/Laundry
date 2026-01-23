@@ -1133,9 +1133,9 @@ function Timesheets() {
 
       {/* Check-in Modal */}
       {showCheckinModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 overflow-x-hidden">
-          <div className="bg-white rounded-t-2xl sm:rounded-lg max-w-md w-full p-4 sm:p-5 max-h-[90vh] sm:max-h-[85vh] overflow-y-auto overflow-x-hidden my-0 sm:my-auto pb-safe sm:pb-5">
-            <div className="flex items-center justify-between mb-3 min-w-0">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-3 z-50 overflow-y-auto overflow-x-hidden">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] flex flex-col my-auto shadow-2xl">
+            <div className="flex items-center justify-between p-4 sm:p-5 pb-3 border-b border-gray-200 flex-shrink-0">
               <h2 className="text-base sm:text-lg font-bold truncate pr-2">Mở ca làm việc</h2>
               <button
                 onClick={() => {
@@ -1148,7 +1148,8 @@ function Timesheets() {
                 ×
               </button>
             </div>
-            <div className="space-y-3 min-w-0">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-5">
+              <div className="space-y-3 min-w-0 py-2">
               {(() => {
                 const employeeIdFromToken = getEmployeeId();
                 const selectedEmployeeInfo = employees.find(emp => emp.id === parseInt(selectedEmployee || employeeIdFromToken || '0'));
@@ -1209,24 +1210,25 @@ function Timesheets() {
                   placeholder="Ghi chú về ca làm việc..."
                 />
               </div>
-              <div className="flex gap-2 pt-2 min-w-0">
-                <button
-                  onClick={handleCheckIn}
-                  className="flex-1 min-w-0 bg-gradient-to-r from-green-500 to-green-600 text-white py-2.5 rounded-lg hover:from-green-600 hover:to-green-700 active:from-green-700 active:to-green-800 font-medium text-sm shadow-md transition-all touch-manipulation"
-                >
-                  ✓ Xác nhận
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCheckinModal(false);
-                    setSelectedEmployee('');
-                    setCheckinNote('');
-                  }}
-                  className="flex-1 min-w-0 bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm transition-all touch-manipulation"
-                >
-                  Hủy
-                </button>
               </div>
+            </div>
+            <div className="flex flex-row gap-2 px-4 sm:px-5 pb-4 pt-2 border-t border-gray-200 flex-shrink-0">
+              <button
+                onClick={handleCheckIn}
+                className="flex-1 min-w-0 bg-gradient-to-r from-green-500 to-green-600 text-white py-2.5 rounded-lg hover:from-green-600 hover:to-green-700 active:from-green-700 active:to-green-800 font-medium text-sm shadow-md transition-all touch-manipulation"
+              >
+                ✓ Xác nhận
+              </button>
+              <button
+                onClick={() => {
+                  setShowCheckinModal(false);
+                  setSelectedEmployee('');
+                  setCheckinNote('');
+                }}
+                className="flex-1 min-w-0 bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm transition-all touch-manipulation"
+              >
+                Hủy
+              </button>
             </div>
           </div>
         </div>
