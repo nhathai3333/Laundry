@@ -67,6 +67,7 @@ function Orders() {
   // Load orders when filters/date change
   useEffect(() => {
     loadOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, viewMode, selectedDate, selectedMonth, selectedYear, selectedStoreId]);
 
   // Cleanup timeout on unmount

@@ -53,12 +53,10 @@ function PendingOrders() {
     try {
       setPrinting(true);
       
-      const updateData = {
+      await api.post(`/orders/${orderToComplete.id}/status`, {
         status: 'completed',
         payment_method: paymentMethod,
-      };
-
-      await api.patch(`/orders/${orderToComplete.id}`, updateData);
+      });
 
       setShowCompleteModal(false);
       setOrderToComplete(null);
@@ -76,7 +74,7 @@ function PendingOrders() {
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
-      await api.patch(`/orders/${orderId}`, { status: newStatus });
+      await api.post(`/orders/${orderId}/status`, { status: newStatus });
       loadPendingOrders();
     } catch (error) {
       alert(error.response?.data?.error || 'Cập nhật thất bại');

@@ -4,6 +4,7 @@ import { hashPassword } from '../utils/helpers.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { auditLog } from '../middleware/audit.js';
 import { validatePositiveNumber, sanitizeString, isValidPhone, validateRequiredString } from '../utils/validators.js';
+import { validatePasswordStrength, containsUserInfo } from '../utils/passwordValidator.js';
 
 const router = express.Router();
 
@@ -163,6 +164,22 @@ router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.bod
       userStatus = 'pending'; // Admin mới tạo bởi root sẽ pending
     }
 
+    // Validate password strength
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ 
+        error: 'Mật khẩu không đủ mạnh',
+        details: passwordValidation.errors 
+      });
+    }
+
+    // Check if password contains user information
+    if (containsUserInfo(password, { name, phone: phoneValidation.value })) {
+      return res.status(400).json({ 
+        error: 'Mật khẩu không được chứa thông tin cá nhân (tên, số điện thoại)' 
+      });
+    }
+
     const nameSanitized = sanitizeString(name);
     if (!nameSanitized.valid || nameSanitized.value === '') {
       return res.status(400).json({ error: 'Tên người dùng không được để trống' });
@@ -299,6 +316,22 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
       }
     }
     if (password) {
+      // Validate password strength
+      const passwordValidation = validatePasswordStrength(password);
+      if (!passwordValidation.valid) {
+        return res.status(400).json({ 
+          error: 'Mật khẩu không đủ mạnh',
+          details: passwordValidation.errors 
+        });
+      }
+
+      // Check if password contains user information
+      if (containsUserInfo(password, { name: oldUser.name, phone: oldUser.phone })) {
+        return res.status(400).json({ 
+          error: 'Mật khẩu không được chứa thông tin cá nhân (tên, số điện thoại)' 
+        });
+      }
+
       const password_hash = await hashPassword(password);
       updates.push('password_hash = ?');
       values.push(password_hash);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../utils/api';
 import { isAdmin, isRoot } from '../../utils/auth';
+import PasswordRequirements from '../../components/PasswordRequirements';
 
 function Users() {
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'employees', or 'pending'
@@ -526,6 +527,9 @@ function Users() {
                   className="w-full px-3 py-2 border rounded-lg"
                   required={!editingUser}
                 />
+                {(!editingUser || userFormData.password) && (
+                  <PasswordRequirements password={userFormData.password} />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cửa hàng *</label>

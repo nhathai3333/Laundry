@@ -869,7 +869,6 @@ router.get('/revenue-by-category-daily', authorize('admin', 'employer'), async (
     const params = [monthStr, monthYearValidation.year];
     
     const storeId = getStoreIdFilter(req);
-    console.log('[Revenue by category] User role:', req.user.role, 'Store ID:', storeId, 'User ID:', req.user.id);
     
     // Build store filter based on role
     if (req.user.role === 'employer') {
@@ -899,8 +898,6 @@ router.get('/revenue-by-category-daily', authorize('admin', 'employer'), async (
       params.push(storeId, storeId, storeId);
     }
     // If admin without store_id filter, show all (no additional filter)
-    
-    console.log('[Revenue by category] Query params:', params);
 
     querySql += ' GROUP BY DATE(o.updated_at), p.name ORDER BY date DESC, total_revenue DESC';
     
@@ -912,7 +909,6 @@ router.get('/revenue-by-category-daily', authorize('admin', 'employer'), async (
     params.push(paginationValidation.limit, offset);
 
     const data = await query(querySql, params);
-    console.log('[Revenue by category] Result count:', data.length, 'Total:', total);
 
     res.json({
       data,
@@ -1237,7 +1233,6 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
 
     // Get revenue by day for the month, split by payment method
     const storeId = getStoreIdFilter(req);
-    console.log('[Revenue daily] User role:', req.user.role, 'Store ID:', storeId, 'User ID:', req.user.id, 'Month:', monthStr, 'Year:', monthYearValidation.year);
     
     let querySql = `
       SELECT 
@@ -1281,15 +1276,10 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
       params.push(storeId, storeId, storeId);
     }
     // If admin without store_id filter, show all (no additional filter)
-    
-    console.log('[Revenue daily] Query params:', params);
 
     querySql += ' GROUP BY DATE(o.updated_at) ORDER BY date DESC';
 
-    console.log('[Revenue daily] Full query:', querySql);
-    console.log('[Revenue daily] Full params:', JSON.stringify(params));
     const revenueData = await query(querySql, params);
-    console.log('[Revenue daily] Result count:', revenueData.length);
     
     // Debug: Check if there are any completed orders in this month
     const debugQuery = `
@@ -1304,7 +1294,6 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         AND DATE_FORMAT(o.updated_at, '%Y') = ?
     `;
     const debugResult = await queryOne(debugQuery, [storeId || 0, storeId || 0, monthStr, monthYearValidation.year]);
-    console.log('[Revenue daily] Debug - Total completed orders in month:', debugResult);
     
     // Debug: Check if there are ANY completed orders in database (any month)
     const allOrdersQuery = `
@@ -1318,7 +1307,6 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
       WHERE o.status = 'completed'
     `;
     const allOrdersResult = await queryOne(allOrdersQuery, [storeId || 0]);
-    console.log('[Revenue daily] Debug - All completed orders in database:', allOrdersResult);
     
     // Debug: Check orders with NULL store_id that might match
     if (storeId) {
@@ -1335,7 +1323,6 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
           )
       `;
       const nullStoreResult = await queryOne(nullStoreDebugQuery, [monthStr, monthYearValidation.year, storeId, storeId]);
-      console.log('[Revenue daily] Debug - NULL store_id orders matching subquery:', nullStoreResult);
     }
 
     // Create a map of date -> revenue for quick lookup
@@ -1394,8 +1381,6 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
       days_in_month: lastDay,
     });
   } catch (error) {
-    console.error('Get revenue daily error:', error);
-    console.error('User role:', req.user?.role, 'Store ID:', req.user?.store_id);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });

@@ -43,6 +43,7 @@ function Home() {
     loadProducts();
     loadOrders();
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
   // Cleanup timeout on unmount

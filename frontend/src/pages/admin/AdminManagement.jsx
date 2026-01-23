@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../utils/api';
 import { isRoot, getAuth } from '../../utils/auth';
+import PasswordRequirements from '../../components/PasswordRequirements';
 
 function AdminManagement() {
   const [pendingAdmins, setPendingAdmins] = useState([]);
@@ -601,6 +602,7 @@ function AdminManagement() {
                   className="w-full px-3 py-2.5 border rounded-lg text-base"
                   required
                 />
+                <PasswordRequirements password={formData.password} />
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                 <p className="font-medium">ℹ️ Thông tin:</p>
@@ -673,6 +675,9 @@ function AdminManagement() {
                   className="w-full px-3 py-2.5 border rounded-lg text-base"
                   placeholder="Nhập mật khẩu mới..."
                 />
+                {editFormData.password && (
+                  <PasswordRequirements password={editFormData.password} />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

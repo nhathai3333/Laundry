@@ -1176,27 +1176,43 @@ function Timesheets() {
                   return (
                     <div className="min-w-0">
                       <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                        Chọn nhân viên
+                        Chọn nhân viên <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={selectedEmployee}
                         onChange={(e) => setSelectedEmployee(e.target.value)}
                         className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
                       >
-                        <option value="">-- Chọn nhân viên (tùy chọn) --</option>
+                        <option value="">-- Chọn tên của bạn --</option>
                         {employees.map((emp) => (
                           <option key={emp.id} value={emp.id}>
                             {emp.name} {emp.phone ? `(${emp.phone})` : ''}
                           </option>
                         ))}
                       </select>
-                      <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">
-                        Để trống nếu bạn là nhân viên chính
-                      </p>
+                      <div className="mt-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                        <p className="text-[10px] sm:text-xs text-blue-800 font-medium mb-1">
+                          💡 Lưu ý khi nhiều người cùng làm việc:
+                        </p>
+                        <p className="text-[10px] sm:text-xs text-blue-700">
+                          Mỗi nhân viên phải chọn <strong>tên của mình</strong> khi check-in. Nếu không chọn, chỉ có 1 người có thể check-in/ngày.
+                        </p>
+                      </div>
                     </div>
                   );
                 }
-                return null;
+                return (
+                  <div className="min-w-0">
+                    <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-xs sm:text-sm text-yellow-800 font-medium mb-1">
+                        ⚠️ Chưa có danh sách nhân viên
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-yellow-700">
+                        Nếu nhiều người cùng làm việc, vui lòng liên hệ admin để thêm nhân viên vào danh sách. Mỗi nhân viên cần chọn tên mình khi check-in.
+                      </p>
+                    </div>
+                  </div>
+                );
               })()}
               <div className="min-w-0">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">

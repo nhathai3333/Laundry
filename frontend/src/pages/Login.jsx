@@ -127,29 +127,23 @@ function Login() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Số điện thoại
-              </label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Nhập số điện thoại"
+                placeholder="Số điện thoại"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Mật khẩu
-              </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Nhập mật khẩu"
+                placeholder="Mật khẩu"
                 required
               />
             </div>
@@ -163,9 +157,6 @@ function Login() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-600">
-            <p>Mặc định: admin / admin123</p>
-          </div>
         </div>
       </div>
 

@@ -224,6 +224,24 @@ WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY);
 
 ---
 
+## Các cải thiện đã thêm
+
+### 6. Security Headers (✅ Đã thêm)
+- **Helmet.js:** Bảo vệ khỏi XSS, clickjacking, MIME sniffing
+- **CSP:** Content Security Policy để ngăn chặn XSS attacks
+- **Tự động áp dụng:** Tất cả các request đều được bảo vệ
+
+### 7. Password Strength Requirements (✅ Đã thêm)
+- **Yêu cầu tối thiểu:**
+  - Ít nhất 8 ký tự
+  - Có chữ hoa (A-Z)
+  - Có chữ thường (a-z)
+  - Có số (0-9)
+  - Có ký tự đặc biệt (!@#$%^&*...)
+- **Kiểm tra mật khẩu yếu:** Từ chối các mật khẩu phổ biến
+- **Kiểm tra thông tin cá nhân:** Không cho phép mật khẩu chứa tên hoặc số điện thoại
+- **Áp dụng cho:** Tạo user mới, đổi mật khẩu, tạo cửa hàng
+
 ## Tương lai (Có thể thêm)
 
 - [ ] Two-Factor Authentication (2FA)
@@ -232,5 +250,4 @@ WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY);
 - [ ] IP whitelist/blacklist
 - [ ] Device fingerprinting
 - [ ] Redis-based rate limiting (cho production scale)
-- [ ] Password strength meter
 - [ ] Password expiration policy

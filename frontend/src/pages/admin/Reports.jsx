@@ -54,6 +54,7 @@ function Reports() {
     if (validReportTypes.includes(reportType)) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportType, selectedMonth, selectedYear, pagination.page, pageSize, selectedStoreId]);
 
   // Save filters whenever they change
@@ -331,33 +332,12 @@ function Reports() {
 
   return (
     <div className="space-y-6">
-        <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Báo cáo</h1>
-        {isAdmin() && stores.length > 0 && (
-        <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Lọc theo cửa hàng</label>
-            <select
-              value={selectedStoreId}
-              onChange={(e) => setSelectedStoreId(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-base bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">Tất cả cửa hàng</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
       <div className="mb-6">
-          <p className="text-gray-600">Thống kê và báo cáo doanh thu</p>
-        </div>
-
-      {/* Report Type Selector */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-        <div className="flex flex-wrap gap-3 mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Báo cáo</h1>
+        
+        {/* Report Type Selector and Store Filter in one row */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+          <div className="flex flex-wrap gap-3 items-end mb-6">
           <button
             onClick={() => {
               setReportType('product');
@@ -422,10 +402,29 @@ function Reports() {
           >
             Doanh thu từng ngày
           </button>
-        </div>
+            
+            {/* Store Filter - inline with report type buttons */}
+            {isAdmin() && stores.length > 0 && (
+              <div className="ml-auto">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lọc theo cửa hàng</label>
+                <select
+                  value={selectedStoreId}
+                  onChange={(e) => setSelectedStoreId(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-300 rounded-xl text-base bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">Tất cả cửa hàng</option>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
 
-        {/* Month/Year Selector */}
-        <div className="flex gap-3 items-center">
+          {/* Month/Year Selector */}
+          <div className="flex gap-3 items-center">
           <label className="text-sm font-medium text-gray-700">Tháng:</label>
             <select
             value={selectedMonth}
@@ -455,6 +454,7 @@ function Reports() {
             />
           </div>
         </div>
+      </div>
 
       {/* Report Table */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
