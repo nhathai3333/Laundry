@@ -1,0 +1,668 @@
+import express from 'express';
+import { query, queryOne, execute } from '../database/db.js';
+import { calculateHours } from '../utils/helpers.js';
+import { authenticate } from '../middleware/auth.js';
+import { authorize } from '../middleware/auth.js';
+import { OVERTIME_MULTIPLIER } from '../utils/constants.js';
+
+const router = express.Router();
+
+// All routes require authentication
+router.use(authenticate);
+
+// Get timesheets
+router.get('/', async (req, res) => {
+  try {
+    const { user_id, date, month, year } = req.query;
+    let sqlQuery = `
+      SELECT t.*, 
+        u.name as user_name,
+        COALESCE(e.name, u.name) as employee_name
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      LEFT JOIN employees e ON t.employee_id = e.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    // Admin can filter by store_id from query param or token
+    // Employer can only see their own
+    const storeIdParam = req.query.store_id;
+    if (req.user.role === 'admin') {
+      // Only filter by store_id if explicitly provided and not 'all'
+      if (storeIdParam && storeIdParam !== 'all') {
+        sqlQuery += ' AND t.store_id = ?';
+        params.push(storeIdParam);
+      }
+      // If storeIdParam is 'all' or not provided, show all stores (no filter)
+    } else if (req.user.role === 'employer') {
+      sqlQuery += ' AND t.user_id = ?';
+      params.push(req.user.id);
+    } else if (user_id) {
+      sqlQuery += ' AND t.user_id = ?';
+      params.push(user_id);
+    }
+
+    if (date) {
+      sqlQuery += ' AND DATE(t.check_in) = ?';
+      params.push(date);
+    }
+
+    // Filter by date range (for month view)
+    const { start_date, end_date } = req.query;
+    if (start_date && end_date) {
+      sqlQuery += ' AND DATE(t.check_in) >= ? AND DATE(t.check_in) <= ?';
+      params.push(start_date, end_date);
+    }
+
+    if (month && year) {
+      const monthStr = String(month).padStart(2, '0');
+      sqlQuery += ` AND DATE_FORMAT(t.check_in, '%m') = ? AND DATE_FORMAT(t.check_in, '%Y') = ?`;
+      params.push(monthStr, year);
+    }
+
+    sqlQuery += ' ORDER BY t.check_in DESC';
+
+    const timesheets = await query(sqlQuery, params);
+    res.json({ data: timesheets });
+  } catch (error) {
+    console.error('Get timesheets error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get employees for store (for check-in selection)
+router.get('/store-employees', async (req, res) => {
+  try {
+    // For employer, employees.store_id references users.id (the employer user id)
+    // So we use req.user.id, not users.store_id
+    const employerUserId = req.user.id;
+    
+    const employees = await query(`
+      SELECT id, name, phone
+      FROM employees
+      WHERE store_id = ? AND status = 'active'
+      ORDER BY name
+    `, [employerUserId]);
+
+    res.json({ data: employees });
+  } catch (error) {
+    console.error('Get store employees error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Check in
+router.post('/check-in', async (req, res) => {
+  try {
+    // Only employer can check in (not admin)
+    if (req.user.role === 'admin') {
+      return res.status(403).json({ error: 'Admin không thể check-in. Vui lòng sử dụng tài khoản nhân viên.' });
+    }
+
+    const { employee_id, note } = req.body;
+    
+    // Get the actual store_id from users table (users.store_id references stores.id)
+    // For employer, we need to get users.store_id, not users.id
+    const user = await queryOne('SELECT store_id FROM users WHERE id = ? AND role = ?', [req.user.id, 'employer']);
+    
+    if (!user || !user.store_id) {
+      return res.status(400).json({ error: 'Employer account không có cửa hàng được gán. Vui lòng liên hệ admin.' });
+    }
+    
+    const storeId = user.store_id; // This is stores.id, not users.id
+    
+    // Ưu tiên dùng employee_id từ token (nếu đã chọn khi login)
+    // Nếu không có trong token, dùng từ request body
+    let employeeId = req.user.employee_id || employee_id || null;
+    
+    // Verify employee belongs to the same store
+    // Note: employees.store_id references users.id (the employer user id)
+    if (employeeId) {
+      const employee = await queryOne('SELECT * FROM employees WHERE id = ? AND store_id = ? AND status = ?', [employeeId, req.user.id, 'active']);
+      if (!employee) {
+        return res.status(400).json({ error: 'Employee does not belong to your store' });
+      }
+    }
+
+    // Convert to MySQL datetime format (YYYY-MM-DD HH:MM:SS)
+    const now = new Date();
+    const checkIn = now.toISOString().slice(0, 19).replace('T', ' ');
+
+    // Check if already checked in today for this store and employee
+    const today = now.toISOString().split('T')[0];
+    let existing;
+    if (employeeId) {
+      existing = await queryOne(`
+        SELECT * FROM timesheets
+        WHERE store_id = ? AND employee_id = ? AND DATE(check_in) = ? AND check_out IS NULL
+      `, [storeId, employeeId, today]);
+    } else {
+      existing = await queryOne(`
+        SELECT * FROM timesheets
+        WHERE store_id = ? AND employee_id IS NULL AND DATE(check_in) = ? AND check_out IS NULL
+      `, [storeId, today]);
+    }
+
+    if (existing) {
+      return res.status(400).json({ error: 'Already checked in today for this employee' });
+    }
+
+    const result = await execute(`
+      INSERT INTO timesheets (user_id, store_id, employee_id, check_in, note)
+      VALUES (?, ?, ?, ?, ?)
+    `, [req.user.id, storeId, employeeId, checkIn, note || null]);
+
+    const timesheet = await queryOne(`
+      SELECT t.*, 
+        u.name as user_name, 
+        e.name as employee_name
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      LEFT JOIN employees e ON t.employee_id = e.id
+      WHERE t.id = ?
+    `, [result.insertId]);
+
+    res.status(201).json({ data: timesheet });
+  } catch (error) {
+    console.error('Check in error:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại.' });
+  }
+});
+
+// Get expected revenue for current shift (tổng số tiền từ các đơn đã hoàn thành trong ca)
+router.get('/expected-revenue', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Find today's check-in (query by user_id first, store_id might be different)
+    let timesheet = await queryOne(`
+      SELECT * FROM timesheets
+      WHERE user_id = ? AND DATE(check_in) = ? AND check_out IS NULL
+      ORDER BY check_in DESC
+      LIMIT 1
+    `, [req.user.id, today]);
+
+    if (!timesheet) {
+      return res.json({ data: { expected_revenue: 0, order_count: 0 } });
+    }
+
+    // Calculate total revenue from completed orders in this shift
+    // Tính tổng từ các đơn có status = 'completed' và được hoàn thành sau khi check-in
+    // Filter by store_id if available
+    let revenueQuery = `
+      SELECT 
+        COALESCE(SUM(final_amount), 0) as expected_revenue,
+        COUNT(*) as order_count
+      FROM orders
+      WHERE status = 'completed'
+        AND updated_at >= ?
+        AND updated_at <= NOW()
+        AND (assigned_to = ? OR created_by = ?)
+    `;
+    const revenueParams = [timesheet.check_in, req.user.id, req.user.id];
+    
+    // Filter by store_id if timesheet has store_id
+    if (timesheet.store_id) {
+      revenueQuery += ' AND store_id = ?';
+      revenueParams.push(timesheet.store_id);
+    }
+    
+    const revenueData = await queryOne(revenueQuery, revenueParams);
+
+    const expectedRevenue = revenueData?.expected_revenue || 0;
+    const orderCount = revenueData?.order_count || 0;
+
+    // Debug log removed for security
+
+    res.json({ 
+      data: { 
+        expected_revenue: expectedRevenue,
+        order_count: orderCount
+      } 
+    });
+  } catch (error) {
+    console.error('Get expected revenue error:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại.' });
+  }
+});
+
+// Check out
+router.post('/check-out', async (req, res) => {
+  try {
+    // Only employer can check out (not admin)
+    if (req.user.role === 'admin') {
+      return res.status(403).json({ error: 'Admin không thể check-out. Vui lòng sử dụng tài khoản nhân viên.' });
+    }
+
+    const { note, revenue_amount, expected_revenue } = req.body;
+    const userId = req.user.id;
+    // Convert to MySQL datetime format (YYYY-MM-DD HH:MM:SS)
+    const now = new Date();
+    const checkOut = now.toISOString().slice(0, 19).replace('T', ' ');
+
+    // Debug log removed for security
+
+    // Validate revenue_amount - allow any numeric value
+    if (revenue_amount === undefined || revenue_amount === null || revenue_amount === '') {
+      return res.status(400).json({ error: 'Số tiền thực tế là bắt buộc' });
+    }
+    
+    const revenueValue = parseFloat(revenue_amount);
+    
+    if (isNaN(revenueValue)) {
+      return res.status(400).json({ error: 'Số tiền thực tế phải là số hợp lệ' });
+    }
+
+    // Find today's check-in (query by user_id, store_id should already be set correctly from check-in)
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Debug log removed for security
+    
+    // Find the most recent check-in for today
+    let timesheet = await queryOne(`
+      SELECT * FROM timesheets
+      WHERE user_id = ? AND DATE(check_in) = ? AND check_out IS NULL
+      ORDER BY check_in DESC
+      LIMIT 1
+    `, [userId, today]);
+
+    // Debug log removed for security
+
+    if (!timesheet) {
+      // Debug: Check what timesheets exist
+      const allToday = await query(`
+        SELECT id, user_id, store_id, check_in, check_out, employee_id
+        FROM timesheets
+        WHERE user_id = ? AND DATE(check_in) = ?
+      `, [userId, today]);
+      // Debug log removed for security
+      
+      return res.status(400).json({ 
+        error: 'Không tìm thấy ca làm việc hôm nay. Vui lòng kiểm tra lại hoặc liên hệ quản trị viên.' 
+      });
+    }
+
+    // Calculate hours
+    const { regular, overtime } = calculateHours(timesheet.check_in, checkOut);
+
+    // Update timesheet with actual revenue and expected revenue
+    const updateResult = await execute(`
+      UPDATE timesheets
+      SET check_out = ?,
+          regular_hours = ?,
+          overtime_hours = ?,
+          revenue_amount = ?,
+          expected_revenue = ?,
+          note = COALESCE(?, note)
+      WHERE id = ?
+    `, [
+      checkOut, 
+      regular, 
+      overtime, 
+      revenueValue, 
+      expected_revenue || null, 
+      note || null, 
+      timesheet.id
+    ]);
+
+    if (updateResult.affectedRows === 0) {
+      return res.status(400).json({ error: 'Không thể cập nhật ca làm việc' });
+    }
+
+    const updated = await queryOne(`
+      SELECT t.*, 
+        u.name as user_name,
+        e.name as employee_name
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      LEFT JOIN employees e ON t.employee_id = e.id
+      WHERE t.id = ?
+    `, [timesheet.id]);
+
+    res.json({ data: updated });
+  } catch (error) {
+    console.error('Check out error:', error);
+    res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại.' });
+  }
+});
+
+// Get summary (Admin only)
+router.get('/summary', authorize('admin'), async (req, res) => {
+  try {
+    const { user_id, month, year } = req.query;
+
+    if (!month || !year) {
+      return res.status(400).json({ error: 'Month and year are required' });
+    }
+
+    // Admin can see all stores if no store_id, or filter by store_id if provided
+    let querySql = `
+      SELECT 
+        t.user_id,
+        u.name as user_name,
+        COUNT(*) as total_days,
+        SUM(t.regular_hours) as total_regular_hours,
+        SUM(t.overtime_hours) as total_overtime_hours,
+        SUM(t.regular_hours + t.overtime_hours) as total_hours,
+        SUM(t.revenue_amount) as total_revenue
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      WHERE DATE_FORMAT(t.check_in, '%m') = ? AND DATE_FORMAT(t.check_in, '%Y') = ?
+        AND t.check_out IS NOT NULL
+    `;
+    const params = [String(month).padStart(2, '0'), year];
+    
+    if (req.user.store_id) {
+      querySql += ' AND t.store_id = ?';
+      params.push(req.user.store_id);
+    }
+
+    if (user_id) {
+      querySql += ' AND t.user_id = ?';
+      params.push(user_id);
+    }
+
+    querySql += ' GROUP BY t.user_id, u.name';
+
+    const summary = await query(querySql, params);
+    res.json({ data: summary });
+  } catch (error) {
+    console.error('Get timesheet summary error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get revenue by shift (Admin only)
+router.get('/revenue-by-shift', authorize('admin'), async (req, res) => {
+  try {
+    const { month, year, user_id } = req.query;
+
+    if (!month || !year) {
+      return res.status(400).json({ error: 'Month and year are required' });
+    }
+
+    // Admin can see all stores if no store_id, or filter by store_id if provided
+    let querySql = `
+      SELECT 
+        t.id,
+        t.user_id,
+        u.name as user_name,
+        DATE(t.check_in) as shift_date,
+        TIME(t.check_in) as check_in_time,
+        TIME(t.check_out) as check_out_time,
+        t.regular_hours,
+        t.overtime_hours,
+        t.revenue_amount,
+        t.note
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      WHERE DATE_FORMAT(t.check_in, '%m') = ? AND DATE_FORMAT(t.check_in, '%Y') = ?
+        AND t.check_out IS NOT NULL
+        AND t.revenue_amount > 0
+    `;
+    const params = [String(month).padStart(2, '0'), year];
+    
+    if (req.user.store_id) {
+      querySql += ' AND t.store_id = ?';
+      params.push(req.user.store_id);
+    }
+
+    if (user_id) {
+      querySql += ' AND t.user_id = ?';
+      params.push(user_id);
+    }
+
+    querySql += ' ORDER BY t.check_in DESC';
+
+    const shifts = await query(querySql, params);
+    res.json({ data: shifts });
+  } catch (error) {
+    console.error('Get revenue by shift error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get payroll calculation (Admin only) - Tính lương theo tuần/tháng
+router.get('/payroll', authorize('admin'), async (req, res) => {
+  try {
+    const { period, week, month, year, user_id } = req.query;
+
+    if (!period || !['week', 'month'].includes(period)) {
+      return res.status(400).json({ error: 'Period must be "week" or "month"' });
+    }
+
+    let startDate, endDate;
+    if (period === 'week') {
+      if (!week || !year) {
+        return res.status(400).json({ error: 'Week and year are required for weekly payroll' });
+      }
+      // Calculate week start and end dates (ISO week)
+      const simple = new Date(year, 0, 1 + (week - 1) * 7);
+      const dow = simple.getDay();
+      const ISOweekStart = simple;
+      if (dow <= 4) {
+        ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+      } else {
+        ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+      }
+      startDate = new Date(ISOweekStart);
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      startDate = startDate.toISOString().split('T')[0];
+      endDate = endDate.toISOString().split('T')[0];
+    } else {
+      if (!month || !year) {
+        return res.status(400).json({ error: 'Month and year are required for monthly payroll' });
+      }
+      startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+    }
+
+    // Admin can see all stores if no store_id, or filter by store_id if provided
+    let querySql = `
+      SELECT 
+        COALESCE(t.employee_id, t.user_id) as employee_id,
+        COALESCE(e.name, u.name) as employee_name,
+        u.hourly_rate as hourly_rate,
+        u.shift_rate as shift_rate,
+        COUNT(*) as total_shifts,
+        SUM(t.regular_hours) as total_regular_hours,
+        SUM(t.overtime_hours) as total_overtime_hours,
+        SUM(t.regular_hours + t.overtime_hours) as total_hours,
+        SUM(t.revenue_amount) as total_revenue
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      LEFT JOIN employees e ON t.employee_id = e.id
+      WHERE DATE(t.check_in) >= ? AND DATE(t.check_in) <= ?
+        AND t.check_out IS NOT NULL
+    `;
+    const params = [startDate, endDate];
+    
+    // Admin can filter by store_id from query param or token
+    const storeIdParam = req.query.store_id;
+    if (req.user.role === 'admin') {
+      if (storeIdParam && storeIdParam !== 'all') {
+        querySql += ' AND t.store_id = ?';
+        params.push(storeIdParam);
+      } else if (req.user.store_id) {
+        querySql += ' AND t.store_id = ?';
+        params.push(req.user.store_id);
+      }
+    } else if (req.user.role === 'employer') {
+      querySql += ' AND t.store_id = ?';
+      params.push(req.user.store_id);
+    }
+
+    if (user_id) {
+      querySql += ' AND t.user_id = ?';
+      params.push(user_id);
+    }
+
+    querySql += ' GROUP BY COALESCE(t.employee_id, t.user_id), COALESCE(e.name, u.name), u.hourly_rate, u.shift_rate ORDER BY COALESCE(e.name, u.name)';
+
+    const timesheets = await query(querySql, params);
+
+    // Calculate salary for each employee
+    const payroll = timesheets.map((ts) => {
+      let salary = 0;
+      
+      // Calculate based on hourly rate if available
+      if (ts.hourly_rate) {
+        salary = (ts.total_regular_hours || 0) * ts.hourly_rate;
+        // Overtime multiplier (configurable via OVERTIME_MULTIPLIER constant)
+        salary += (ts.total_overtime_hours || 0) * ts.hourly_rate * OVERTIME_MULTIPLIER;
+      }
+      
+      // Add shift rate if available (alternative calculation method)
+      if (ts.shift_rate) {
+        const shiftSalary = (ts.total_shifts || 0) * ts.shift_rate;
+        // Use the higher of hourly or shift rate calculation
+        if (shiftSalary > salary) {
+          salary = shiftSalary;
+        }
+      }
+
+      return {
+        user_id: ts.employee_id,
+        employee_id: ts.employee_id,
+        user_name: ts.employee_name,
+        employee_name: ts.employee_name,
+        hourly_rate: ts.hourly_rate || 0,
+        shift_rate: ts.shift_rate || 0,
+        total_shifts: ts.total_shifts || 0,
+        total_regular_hours: ts.total_regular_hours || 0,
+        total_overtime_hours: ts.total_overtime_hours || 0,
+        total_hours: ts.total_hours || 0,
+        total_revenue: ts.total_revenue || 0,
+        salary: Math.round(salary * 100) / 100,
+      };
+    });
+
+    res.json({ 
+      data: payroll,
+      period,
+      start_date: startDate,
+      end_date: endDate,
+      total_salary: payroll.reduce((sum, p) => sum + p.salary, 0),
+      total_hours: payroll.reduce((sum, p) => sum + p.total_hours, 0),
+    });
+  } catch (error) {
+    console.error('Get payroll error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get daily hours for each employee in a month (Admin only)
+router.get('/daily-hours', authorize('admin'), async (req, res) => {
+  try {
+    const { month, year, user_id } = req.query;
+
+    if (!month || !year) {
+      return res.status(400).json({ error: 'Month and year are required' });
+    }
+
+    // Admin can see all stores if no store_id, or filter by store_id if provided
+    const monthStr = String(month).padStart(2, '0');
+    const lastDay = new Date(year, month, 0).getDate();
+
+    // Get all timesheets for the month
+    let querySql = `
+      SELECT 
+        COALESCE(t.employee_id, t.user_id) as employee_id,
+        COALESCE(e.name, u.name) as employee_name,
+        DATE(t.check_in) as work_date,
+        t.regular_hours,
+        t.overtime_hours,
+        (t.regular_hours + t.overtime_hours) as total_hours
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      LEFT JOIN employees e ON t.employee_id = e.id
+      WHERE DATE_FORMAT(t.check_in, '%m') = ? AND DATE_FORMAT(t.check_in, '%Y') = ?
+        AND t.check_out IS NOT NULL
+    `;
+    const params = [monthStr, year];
+    
+    // Admin can filter by store_id from query param or token
+    const storeIdParam = req.query.store_id;
+    if (req.user.role === 'admin') {
+      if (storeIdParam && storeIdParam !== 'all') {
+        querySql += ' AND t.store_id = ?';
+        params.push(storeIdParam);
+      } else if (req.user.store_id) {
+        querySql += ' AND t.store_id = ?';
+        params.push(req.user.store_id);
+      }
+    } else if (req.user.role === 'employer') {
+      querySql += ' AND t.store_id = ?';
+      params.push(req.user.store_id);
+    }
+
+    if (user_id) {
+      querySql += ' AND t.user_id = ?';
+      params.push(user_id);
+    }
+
+    querySql += ' ORDER BY COALESCE(e.name, u.name), t.check_in';
+
+    const timesheets = await query(querySql, params);
+
+    // Group by employee and date
+    const employeeMap = {};
+    
+    timesheets.forEach((ts) => {
+      const empId = ts.employee_id;
+      if (!employeeMap[empId]) {
+        employeeMap[empId] = {
+          user_id: empId,
+          employee_id: empId,
+          user_name: ts.employee_name,
+          employee_name: ts.employee_name,
+          daily_hours: {},
+        };
+      }
+      
+      const dateKey = ts.work_date;
+      if (!employeeMap[empId].daily_hours[dateKey]) {
+        employeeMap[empId].daily_hours[dateKey] = 0;
+      }
+      
+      // Sum hours if multiple shifts in the same day
+      employeeMap[empId].daily_hours[dateKey] += ts.total_hours || 0;
+    });
+
+    // Convert to array format with all days of the month
+    const result = Object.values(employeeMap).map((emp) => {
+      const dailyHours = {};
+      
+      // Initialize all days with 0
+      for (let day = 1; day <= lastDay; day++) {
+        const dateKey = `${year}-${monthStr}-${String(day).padStart(2, '0')}`;
+        dailyHours[dateKey] = emp.daily_hours[dateKey] || 0;
+      }
+      
+      return {
+        user_id: emp.user_id,
+        employee_id: emp.employee_id,
+        user_name: emp.employee_name,
+        employee_name: emp.employee_name,
+        daily_hours: dailyHours,
+        total_month_hours: Object.values(emp.daily_hours).reduce((sum, hours) => sum + hours, 0),
+      };
+    });
+
+    res.json({ 
+      data: result,
+      month: parseInt(month),
+      year: parseInt(year),
+      days_in_month: lastDay,
+    });
+  } catch (error) {
+    console.error('Get daily hours error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+export default router;
+

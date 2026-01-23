@@ -1,0 +1,304 @@
+import express from 'express';
+import { query, queryOne, execute } from '../database/db.js';
+import { authenticate } from '../middleware/auth.js';
+import { isValidPhone, sanitizeString, validateRequiredString } from '../utils/validators.js';
+
+const router = express.Router();
+
+// All routes require authentication
+router.use(authenticate);
+
+// Get all customers
+router.get('/', async (req, res) => {
+  try {
+    const { phone, search } = req.query;
+    
+    // For admin, only show customers who have orders from their store
+    // For employer, only show customers who have orders from their store
+    let querySql = '';
+    const params = [];
+
+    if (req.user.role === 'root') {
+      // Root admin is software vendor, not store operator - return empty
+      return res.json({ data: [] });
+    } else if (req.user.role === 'admin' && req.user.role !== 'root') {
+      // Admin: only customers with orders from stores in their chain
+      // Support store_id from query param for filtering
+      const storeIdParam = req.query.store_id;
+      if (storeIdParam && storeIdParam !== 'all') {
+        // Filter by specific store - use o.store_id directly
+        querySql = `
+          SELECT DISTINCT c.*
+          FROM customers c
+          INNER JOIN orders o ON c.id = o.customer_id
+          WHERE o.store_id = ?
+        `;
+        params.push(parseInt(storeIdParam));
+      } else {
+        // Show all customers from stores in admin's chain
+        querySql = `
+          SELECT DISTINCT c.*
+          FROM customers c
+          INNER JOIN orders o ON c.id = o.customer_id
+          WHERE o.store_id IN (SELECT id FROM stores WHERE admin_id = ?)
+        `;
+        params.push(req.user.id);
+      }
+    } else if (req.user.role === 'employer') {
+      // Employer: only customers with orders from their store
+      // Use o.store_id (stores.id) to filter orders
+      if (req.user.store_id) {
+        querySql = `
+          SELECT DISTINCT c.*
+          FROM customers c
+          INNER JOIN orders o ON c.id = o.customer_id
+          WHERE o.store_id = ?
+        `;
+        params.push(req.user.store_id);
+      } else {
+        // Fallback: filter by user id if no store_id
+        querySql = `
+          SELECT DISTINCT c.*
+          FROM customers c
+          INNER JOIN orders o ON c.id = o.customer_id
+          WHERE (o.assigned_to = ? OR o.created_by = ?)
+        `;
+        params.push(req.user.id, req.user.id);
+      }
+    } else {
+      // Fallback (should not happen)
+      querySql = 'SELECT c.* FROM customers c WHERE 1=1';
+    }
+
+    if (phone) {
+      querySql += ' AND c.phone LIKE ?';
+      params.push(`%${phone}%`);
+    }
+
+    if (search) {
+      querySql += ' AND (c.name LIKE ? OR c.phone LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    querySql += ' ORDER BY c.total_spent DESC, c.created_at DESC';
+    
+    // Add limit for autocomplete (default 20, max 50)
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    querySql += ` LIMIT ${limit}`;
+
+    const customers = await query(querySql, params);
+    res.json({ data: customers });
+  } catch (error) {
+    console.error('Get customers error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get customer by phone (for auto-fill in order form)
+router.get('/by-phone/:phone', async (req, res) => {
+  try {
+    const { phone } = req.params;
+    
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    const customer = await queryOne('SELECT id, name, phone, total_orders, total_spent FROM customers WHERE phone = ?', [phone]);
+
+    if (!customer) {
+      return res.json({ data: null });
+    }
+
+    res.json({ data: customer });
+  } catch (error) {
+    console.error('Get customer by phone error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get single customer
+router.get('/:id', async (req, res) => {
+  try {
+    const customer = await queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    res.json({ data: customer });
+  } catch (error) {
+    console.error('Get customer error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get customer orders
+router.get('/:id/orders', async (req, res) => {
+  try {
+    let querySql = `
+      SELECT o.*, u.name as assigned_to_name
+      FROM orders o
+      LEFT JOIN users u ON o.assigned_to = u.id
+      WHERE o.customer_id = ?
+    `;
+    const params = [req.params.id];
+
+    // Filter by store based on user role
+    if (req.user.role === 'employer' && req.user.store_id) {
+      querySql += ' AND o.store_id = ?';
+      params.push(req.user.store_id);
+    } else if (req.user.role === 'admin' && req.user.role !== 'root') {
+      querySql += ' AND o.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+      params.push(req.user.id);
+    } else if (req.user.role === 'root') {
+      // Root admin is software vendor, not store operator - return empty
+      return res.json({ data: [] });
+    }
+
+    querySql += ' ORDER BY o.created_at DESC';
+
+    const orders = await query(querySql, params);
+    res.json({ data: orders });
+  } catch (error) {
+    console.error('Get customer orders error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Create or update customer
+router.post('/', async (req, res) => {
+  try {
+    const { name, phone, note } = req.body;
+
+    // Validate phone
+    const phoneValidation = validateRequiredString(phone, 'Số điện thoại');
+    if (!phoneValidation.valid) {
+      return res.status(400).json({ error: phoneValidation.error });
+    }
+
+    if (!isValidPhone(phoneValidation.value)) {
+      return res.status(400).json({ error: 'Số điện thoại không đúng định dạng' });
+    }
+
+    // Sanitize name and note
+    const nameSanitized = sanitizeString(name);
+    const noteSanitized = sanitizeString(note);
+
+    // Check if customer exists
+    const existing = await queryOne('SELECT * FROM customers WHERE phone = ?', [phoneValidation.value]);
+
+    if (existing) {
+      // Update existing
+      const updates = [];
+      const values = [];
+
+      if (name !== undefined) {
+        updates.push('name = ?');
+        values.push(nameSanitized.value);
+      }
+      if (note !== undefined) {
+        updates.push('note = ?');
+        values.push(noteSanitized.value || null);
+      }
+      
+      if (updates.length === 0) {
+        return res.json({ data: existing });
+      }
+      
+      // MySQL handles updated_at automatically
+      values.push(existing.id);
+
+      await execute(`
+        UPDATE customers
+        SET ${updates.join(', ')}
+        WHERE id = ?
+      `, values);
+
+      const updated = await queryOne('SELECT * FROM customers WHERE id = ?', [existing.id]);
+      return res.json({ data: updated });
+    } else {
+      // Create new
+      const result = await execute(`
+        INSERT INTO customers (name, phone, note)
+        VALUES (?, ?, ?)
+      `, [nameSanitized.value, phoneValidation.value, noteSanitized.value || null]);
+
+      const newCustomer = await queryOne('SELECT * FROM customers WHERE id = ?', [result.insertId]);
+      return res.status(201).json({ data: newCustomer });
+    }
+  } catch (error) {
+    console.error('Create customer error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update customer
+router.patch('/:id', async (req, res) => {
+  try {
+    const { name, phone, note } = req.body;
+
+    const customer = await queryOne('SELECT id, phone FROM customers WHERE id = ?', [req.params.id]);
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const updates = [];
+    const values = [];
+
+    if (name !== undefined) {
+      const nameSanitized = sanitizeString(name);
+      updates.push('name = ?');
+      values.push(nameSanitized.value);
+    }
+    
+    if (phone !== undefined) {
+      const phoneValidation = validateRequiredString(phone, 'Số điện thoại');
+      if (!phoneValidation.valid) {
+        return res.status(400).json({ error: phoneValidation.error });
+      }
+      
+      if (!isValidPhone(phoneValidation.value)) {
+        return res.status(400).json({ error: 'Số điện thoại không đúng định dạng' });
+      }
+      
+      // Check phone uniqueness (except current customer)
+      if (phoneValidation.value !== customer.phone) {
+        const existing = await queryOne('SELECT id FROM customers WHERE phone = ? AND id != ?', [phoneValidation.value, req.params.id]);
+        if (existing) {
+          return res.status(400).json({ error: 'Số điện thoại đã được sử dụng bởi khách hàng khác' });
+        }
+      }
+      
+      updates.push('phone = ?');
+      values.push(phoneValidation.value);
+    }
+    
+    if (note !== undefined) {
+      const noteSanitized = sanitizeString(note);
+      updates.push('note = ?');
+      values.push(noteSanitized.value || null);
+    }
+    
+    if (updates.length === 0) {
+      const current = await queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+      return res.json({ data: current });
+    }
+    
+    // MySQL handles updated_at automatically
+    values.push(req.params.id);
+
+    await execute(`
+      UPDATE customers
+      SET ${updates.join(', ')}
+      WHERE id = ?
+    `, values);
+
+    const updated = await queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+    res.json({ data: updated });
+  } catch (error) {
+    console.error('Update customer error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+export default router;

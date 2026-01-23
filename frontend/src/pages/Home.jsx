@@ -1,0 +1,1106 @@
+import { useEffect, useState } from 'react';
+import api from '../utils/api';
+import { getAuth } from '../utils/auth';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDaysInMonth } from 'date-fns';
+import { isAdmin } from '../utils/auth';
+
+function Home() {
+  const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [stats, setStats] = useState({
+    todayRevenue: 0,
+    todayOrders: 0,
+    totalAmount: 0,
+  });
+  const [formData, setFormData] = useState({
+    customer_name: '',
+    customer_phone: '',
+    items: [{ product_id: '', quantity: '' }],
+    note: '',
+    promotion_id: '',
+  });
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [orderToComplete, setOrderToComplete] = useState(null);
+  const [shouldPrint, setShouldPrint] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [applicablePromotions, setApplicablePromotions] = useState([]);
+  const [loadingPromotions, setLoadingPromotions] = useState(false);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const [orderDiscount, setOrderDiscount] = useState(0);
+  const [orderFinal, setOrderFinal] = useState(0);
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
+
+  useEffect(() => {
+    loadProducts();
+    loadOrders();
+    loadStats();
+  }, [selectedDate]);
+
+  const loadOrders = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      // Filter by exact date (YYYY-MM-DD)
+      params.append('date', selectedDate);
+      
+      const response = await api.get(`/orders?${params.toString()}`);
+      const allOrders = response.data.data || [];
+      
+      // Backend already filters by date, so just use the orders directly
+      // But add a safety check in case of timezone issues
+      const filteredOrders = allOrders.filter(order => {
+        if (!order.created_at) return false;
+        try {
+          const orderDate = format(new Date(order.created_at), 'yyyy-MM-dd');
+          return orderDate === selectedDate;
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      setOrders(filteredOrders);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadProducts = async () => {
+    try {
+      const response = await api.get('/products?status=active');
+      setProducts(response.data.data || []);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      // Use reports API to get revenue by completion date (updated_at)
+      const today = format(new Date(), 'yyyy-MM-dd');
+      try {
+        const revenueRes = await api.get(`/reports/revenue?period=day&start_date=${selectedDate}&end_date=${selectedDate}`);
+        const todayRevenueData = revenueRes.data.data?.[0];
+        const todayRevenue = parseFloat(todayRevenueData?.total_revenue) || 0;
+        
+        // Get orders count for the selected date (by created_at for display)
+        const response = await api.get(`/orders?date=${selectedDate}`);
+        const dayOrders = response.data.data || [];
+        
+        setStats({
+          todayRevenue: todayRevenue, // Revenue calculated by completion date (updated_at)
+          todayOrders: dayOrders.length || 0,
+          totalAmount: dayOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0) || 0,
+        });
+      } catch (revenueError) {
+        console.error('Error loading revenue from reports:', revenueError);
+        // Fallback to old method
+        const response = await api.get(`/orders?date=${selectedDate}`);
+        const dayOrders = response.data.data || [];
+        const completedOrders = dayOrders.filter(o => o.status === 'completed');
+        const totalRevenue = completedOrders.reduce((sum, o) => sum + (parseFloat(o.final_amount || o.total_amount) || 0), 0);
+        
+        setStats({
+          todayRevenue: totalRevenue || 0,
+          todayOrders: dayOrders.length || 0,
+          totalAmount: dayOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0) || 0,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
+  const handleStatusChange = async (orderId, newStatus) => {
+    try {
+      await api.post(`/orders/${orderId}/status`, { status: newStatus });
+      loadOrders();
+      loadStats();
+    } catch (error) {
+      alert(error.response?.data?.error || 'Cập nhật thất bại');
+    }
+  };
+
+  const handleCompleteClick = (order) => {
+    setOrderToComplete(order);
+    setShowCompleteModal(true);
+    setShouldPrint(false);
+    setPaymentMethod('cash'); // Reset to default
+  };
+
+  const handleCompleteOrder = async () => {
+    if (!orderToComplete) return;
+
+    try {
+      // Update status to completed with payment method
+      await api.post(`/orders/${orderToComplete.id}/status`, { 
+        status: 'completed',
+        payment_method: paymentMethod
+      });
+
+      if (shouldPrint) {
+        setPrinting(true);
+        try {
+          await api.post(`/print/bill/${orderToComplete.id}`);
+          alert('Đơn hàng đã hoàn thành và bill đã được in!');
+        } catch (printError) {
+          console.error('Print error:', printError);
+          alert('Đơn hàng đã hoàn thành nhưng in bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+        } finally {
+          setPrinting(false);
+        }
+      } else {
+        alert('Đơn hàng đã hoàn thành!');
+      }
+
+      setShowCompleteModal(false);
+      setOrderToComplete(null);
+      setShouldPrint(false);
+      setPaymentMethod('cash');
+      loadOrders();
+      loadStats();
+    } catch (error) {
+      alert(error.response?.data?.error || 'Cập nhật thất bại');
+      setPrinting(false);
+    }
+  };
+
+  const handleAddItem = () => {
+    setFormData({
+      ...formData,
+      items: [...formData.items, { product_id: '', quantity: '' }],
+    });
+  };
+
+  const handleRemoveItem = (index) => {
+    const newItems = formData.items.filter((_, i) => i !== index);
+    setFormData({ ...formData, items: newItems });
+  };
+
+  const handleItemChange = (index, field, value) => {
+    const newItems = [...formData.items];
+    newItems[index][field] = value;
+    setFormData({ ...formData, items: newItems });
+    
+    // Calculate total and load applicable promotions when items change
+    if (field === 'product_id' || field === 'quantity') {
+      calculateTotalAndLoadPromotions(newItems);
+    }
+  };
+
+  // Search customers for autocomplete
+  const searchCustomers = async (query) => {
+    if (!query || query.trim().length < 2) {
+      setCustomerSuggestions([]);
+      setShowCustomerSuggestions(false);
+      return;
+    }
+
+    try {
+      // Get store_id for employer
+      const { user } = getAuth();
+      const storeId = user?.store_id || null;
+
+      const params = new URLSearchParams();
+      params.append('search', query.trim());
+      if (storeId) {
+        params.append('store_id', storeId);
+      }
+
+      const response = await api.get(`/customers?${params.toString()}&limit=10`);
+      const customers = response.data.data || [];
+      setCustomerSuggestions(customers);
+      setShowCustomerSuggestions(customers.length > 0);
+    } catch (error) {
+      console.error('Error searching customers:', error);
+      setCustomerSuggestions([]);
+      setShowCustomerSuggestions(false);
+    }
+  };
+
+  const handleCustomerSelect = (customer) => {
+    setFormData({
+      ...formData,
+      customer_name: customer.name || '',
+      customer_phone: customer.phone || '',
+    });
+    setShowCustomerSuggestions(false);
+    setCustomerSuggestions([]);
+    
+    // Load promotions for selected customer
+    if (customer.phone) {
+      calculateTotalAndLoadPromotions(formData.items, customer.phone);
+    }
+  };
+
+  const calculateTotalAndLoadPromotions = async (items, customerPhone = null) => {
+    // Calculate total
+    let total = 0;
+    for (const item of items) {
+      if (item.product_id && item.quantity) {
+        const product = products.find(p => p.id === parseInt(item.product_id));
+        if (product) {
+          total += product.price * parseFloat(item.quantity);
+        }
+      }
+    }
+
+    setOrderTotal(total);
+
+    // Calculate discount if promotion is selected
+    calculateDiscount(total, formData.promotion_id);
+
+    // Load applicable promotions if total > 0
+    if (total > 0) {
+      setLoadingPromotions(true);
+      try {
+        // Get store_id for employer
+        const { user } = getAuth();
+        const storeId = user?.store_id || null;
+        
+        const phoneToUse = customerPhone || formData.customer_phone || '';
+        const requestData = {
+          customer_phone: phoneToUse || null,
+          bill_amount: total,
+          store_id: storeId
+        };
+        
+        const customerResponse = await api.post('/promotions/applicable', requestData);
+        const promotions = customerResponse.data.data || [];
+        setApplicablePromotions(promotions);
+      } catch (error) {
+        setApplicablePromotions([]);
+      } finally {
+        setLoadingPromotions(false);
+      }
+    } else {
+      setApplicablePromotions([]);
+      setLoadingPromotions(false);
+      setOrderDiscount(0);
+      setOrderFinal(0);
+    }
+  };
+
+  const calculateDiscount = (total, promotionId) => {
+    if (!promotionId || total === 0) {
+      setOrderDiscount(0);
+      setOrderFinal(total);
+      return;
+    }
+
+    const promotion = applicablePromotions.find(p => p.id === parseInt(promotionId));
+    if (!promotion) {
+      setOrderDiscount(0);
+      setOrderFinal(total);
+      return;
+    }
+
+    let discount = 0;
+    if (promotion.discount_type === 'percentage') {
+      discount = (total * promotion.discount_value) / 100;
+      if (promotion.max_discount_amount && discount > promotion.max_discount_amount) {
+        discount = promotion.max_discount_amount;
+      }
+    } else {
+      discount = promotion.discount_value;
+    }
+
+    const final = total - discount;
+    setOrderDiscount(discount);
+    setOrderFinal(final < 0 ? 0 : final);
+  };
+
+  const handleSubmitOrder = async (e) => {
+    e.preventDefault();
+    try {
+      const orderData = {
+        customer_name: formData.customer_name || '',
+        customer_phone: formData.customer_phone || null,
+        items: formData.items
+          .filter((item) => item.product_id && item.quantity)
+          .map((item) => ({
+            product_id: parseInt(item.product_id),
+            quantity: parseFloat(item.quantity),
+          })),
+        note: formData.note || null,
+        promotion_id: formData.promotion_id ? parseInt(formData.promotion_id) : null,
+      };
+
+      if (orderData.items.length === 0) {
+        alert('Vui lòng thêm ít nhất một sản phẩm');
+        return;
+      }
+
+      await api.post('/orders', orderData);
+      
+      setShowModal(false);
+      setFormData({
+        customer_name: '',
+        customer_phone: '',
+        items: [{ product_id: '', quantity: '' }],
+        note: '',
+        promotion_id: '',
+      });
+      setApplicablePromotions([]);
+      setLoadingPromotions(false);
+      setOrderTotal(0);
+      setOrderDiscount(0);
+      setOrderFinal(0);
+      
+      // Ensure selectedDate is today to show the new order
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const todayMonth = new Date().getMonth() + 1;
+      const todayYear = new Date().getFullYear();
+      
+      // Update date state first
+      if (selectedDate !== today) {
+        setSelectedDate(today);
+        setSelectedMonth(todayMonth);
+        setSelectedYear(todayYear);
+      }
+      
+      // Force reload orders with today's date (don't wait for useEffect)
+      try {
+        const params = new URLSearchParams();
+        params.append('date', today);
+        const response = await api.get(`/orders?${params.toString()}`);
+        const allOrders = response.data.data || [];
+        const filteredOrders = allOrders.filter(order => {
+          const orderDate = format(new Date(order.created_at), 'yyyy-MM-dd');
+          return orderDate === today;
+        });
+        setOrders(filteredOrders);
+      } catch (error) {
+        console.error('Error reloading orders:', error);
+      }
+      
+      // Reload stats - use reports API to get revenue by completion date
+      try {
+        const revenueRes = await api.get(`/reports/revenue?period=day&start_date=${today}&end_date=${today}`);
+        const todayRevenueData = revenueRes.data.data?.[0];
+        const todayRevenue = parseFloat(todayRevenueData?.total_revenue) || 0;
+        
+        const statsResponse = await api.get(`/orders?date=${today}`);
+        const dayOrders = statsResponse.data.data || [];
+        
+        setStats({
+          todayRevenue: todayRevenue, // Revenue calculated by completion date (updated_at)
+          todayOrders: dayOrders.length || 0,
+          totalAmount: dayOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0) || 0,
+        });
+      } catch (error) {
+        console.error('Error reloading stats:', error);
+      }
+      
+      // Reload again after a short delay to ensure backend has fully processed
+      setTimeout(() => {
+        loadOrders();
+        loadStats();
+      }, 1500);
+    } catch (error) {
+      console.error('Create order error:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Tạo đơn thất bại';
+      alert(errorMessage);
+    }
+  };
+
+  const handleDateChange = (dateStr) => {
+    setSelectedDate(dateStr);
+    const date = new Date(dateStr);
+    setSelectedMonth(date.getMonth() + 1);
+    setSelectedYear(date.getFullYear());
+  };
+
+  const getDaysInSelectedMonth = () => {
+    const days = getDaysInMonth(new Date(selectedYear, selectedMonth - 1));
+    return Array.from({ length: days }, (_, i) => {
+      const day = i + 1;
+      const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return {
+        day,
+        dateStr,
+        isSelected: dateStr === selectedDate,
+        isToday: dateStr === format(new Date(), 'yyyy-MM-dd'),
+      };
+    });
+  };
+
+  const statusColors = {
+    created: 'bg-gray-100 text-gray-800',
+    completed: 'bg-green-100 text-green-800',
+  };
+
+  const statusLabels = {
+    created: 'Đã tạo',
+    completed: 'Hoàn thành',
+  };
+
+  if (loading && orders.length === 0) {
+    return <div className="text-center py-8">Đang tải...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header with Stats */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">Doanh thu</div>
+          <div className="text-base sm:text-lg font-bold text-green-600">
+            {new Intl.NumberFormat('vi-VN').format(parseFloat(stats.todayRevenue) || 0)} đ
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">Tổng đơn</div>
+          <div className="text-base sm:text-lg font-bold text-blue-600">{stats.todayOrders}</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+          <div className="text-xs sm:text-sm text-gray-600 mb-1">Tổng tiền</div>
+          <div className="text-base sm:text-lg font-bold text-purple-600">
+            {new Intl.NumberFormat('vi-VN').format(parseFloat(stats.totalAmount) || 0)} đ
+          </div>
+        </div>
+      </div>
+
+      {/* Date Selector - All in Combobox */}
+      <div className="bg-white rounded-lg shadow p-3 sm:p-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1">
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                const year = parseInt(e.target.value) || new Date().getFullYear();
+                setSelectedYear(year);
+                const currentDate = new Date(selectedDate);
+                const newYearDate = new Date(year, selectedMonth - 1, 1);
+                let day = 1;
+                if (currentDate.getFullYear() === year && currentDate.getMonth() + 1 === selectedMonth) {
+                  day = currentDate.getDate();
+                  const daysInMonth = getDaysInMonth(newYearDate);
+                  if (day > daysInMonth) day = daysInMonth;
+                }
+                const newDate = `${year}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                handleDateChange(newDate);
+              }}
+              className="px-2 py-2 sm:py-1.5 border rounded text-sm sm:text-xs"
+            >
+              {Array.from({ length: 5 }, (_, i) => {
+                const year = new Date().getFullYear() - 2 + i;
+                return (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                );
+              })}
+            </select>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                const month = parseInt(e.target.value);
+                setSelectedMonth(month);
+                const currentDate = new Date(selectedDate);
+                const newMonthDate = new Date(selectedYear, month - 1, 1);
+                let day = 1;
+                if (currentDate.getMonth() + 1 === month && currentDate.getFullYear() === selectedYear) {
+                  day = currentDate.getDate();
+                  const daysInMonth = getDaysInMonth(newMonthDate);
+                  if (day > daysInMonth) day = daysInMonth;
+                }
+                const newDate = `${selectedYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                handleDateChange(newDate);
+              }}
+              className="px-2 py-2 sm:py-1.5 border rounded text-sm sm:text-xs"
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  Tháng {i + 1}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="px-2 py-2 sm:py-1.5 border rounded text-sm sm:text-xs flex-1"
+            >
+              {getDaysInSelectedMonth().map(({ day, dateStr, isToday }) => {
+                const date = new Date(dateStr);
+                const dayOfWeek = date.getDay();
+                const dayName = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][dayOfWeek];
+                const displayText = isToday 
+                  ? `Hôm nay - ${day}/${selectedMonth} (${dayName})`
+                  : `${day}/${selectedMonth} (${dayName})`;
+                return (
+                  <option key={dateStr} value={dateStr}>
+                    {displayText}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-blue-600 text-white px-4 py-2 sm:px-3 sm:py-1.5 rounded hover:bg-blue-700 active:bg-blue-800 text-sm sm:text-xs font-medium whitespace-nowrap w-full sm:w-auto"
+          >
+            + Tạo đơn
+          </button>
+        </div>
+      </div>
+
+      {/* Orders List */}
+      <div className="space-y-1.5">
+        {orders.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-4 text-center text-gray-500 text-xs sm:text-sm">
+            Chưa có đơn hàng trong ngày này
+          </div>
+        ) : (
+          // Sort: created first, then completed
+          [...orders].sort((a, b) => {
+            if (a.status === 'created' && b.status === 'completed') return -1;
+            if (a.status === 'completed' && b.status === 'created') return 1;
+            return new Date(b.created_at) - new Date(a.created_at);
+          }).map((order) => (
+            <div key={order.id} className="bg-white rounded-lg shadow-sm border border-gray-100 p-2 sm:p-2.5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                    <span className="font-semibold text-xs sm:text-sm text-gray-800 truncate">{order.code}</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium whitespace-nowrap ${
+                        statusColors[order.status] || statusColors.created
+                      }`}
+                    >
+                      {statusLabels[order.status] || order.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-600 mb-0.5">
+                    <span className="truncate">{order.customer_name || order.customer_phone || 'N/A'}</span>
+                    {order.items && order.items.length > 0 && (
+                      <span className="text-gray-400 whitespace-nowrap">
+                        • {order.items.length} sp
+                      </span>
+                    )}
+                  </div>
+                  {order.items && order.items.length > 0 && (
+                    <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                      {order.items.slice(0, 1).map((item) => (
+                        <span key={item.id}>
+                          {item.product_name} x{item.quantity} {item.product_unit}
+                        </span>
+                      ))}
+                      {order.items.length > 1 && (
+                        <span className="text-gray-400 ml-1">+{order.items.length - 1}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="text-right">
+                    <div className="text-sm sm:text-base font-bold text-gray-800 leading-tight">
+                      {new Intl.NumberFormat('vi-VN').format(parseFloat(order.final_amount) || parseFloat(order.total_amount) || 0)} đ
+                    </div>
+                    {order.discount_amount > 0 && (
+                      <div className="text-[10px] text-gray-400 line-through">
+                        {new Intl.NumberFormat('vi-VN').format(parseFloat(order.total_amount) || 0)} đ
+                      </div>
+                    )}
+                  </div>
+                  {/* Status Actions */}
+                  {order.status === 'created' && (
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => handleCompleteClick(order)}
+                        className="px-2.5 py-1.5 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setPrinting(true);
+                          try {
+                            await api.post(`/print/bill/${order.id}`);
+                            alert('Bill đã được in!');
+                          } catch (printError) {
+                            console.error('Print error:', printError);
+                            alert('In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                          } finally {
+                            setPrinting(false);
+                          }
+                        }}
+                        disabled={printing}
+                        className="px-2.5 py-1.5 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
+                      >
+                        {printing ? '...' : '🖨️'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Create Order Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-2 z-50 overflow-y-auto overflow-x-hidden">
+          <div className="bg-white rounded-t-2xl sm:rounded-lg max-w-2xl w-full p-3 sm:p-4 md:p-5 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto overflow-x-hidden my-0 sm:my-auto pb-safe sm:pb-5">
+            <div className="flex items-center justify-between mb-3 sticky top-0 bg-white pb-2 border-b z-10 min-w-0">
+              <h2 className="text-base sm:text-lg font-bold truncate pr-2">Tạo đơn hàng mới</h2>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setFormData({
+                    customer_name: '',
+                    customer_phone: '',
+                    items: [{ product_id: '', quantity: '' }],
+                    note: '',
+                    promotion_id: '',
+                  });
+                  setApplicablePromotions([]);
+                  setLoadingPromotions(false);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-xl w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100 touch-manipulation"
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleSubmitOrder} className="space-y-3 min-w-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 min-w-0">
+                <div className="relative min-w-0">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Tên khách hàng
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.customer_name}
+                    onChange={(e) => {
+                      const newName = e.target.value;
+                      setFormData({ ...formData, customer_name: newName });
+                      
+                      // Clear timeout if exists
+                      if (searchTimeout) {
+                        clearTimeout(searchTimeout);
+                      }
+                      
+                      // Debounce search
+                      const timeout = setTimeout(() => {
+                        searchCustomers(newName);
+                      }, 300);
+                      setSearchTimeout(timeout);
+                    }}
+                    onFocus={() => {
+                      if (formData.customer_name && formData.customer_name.trim().length >= 2) {
+                        searchCustomers(formData.customer_name);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay hiding suggestions to allow click
+                      setTimeout(() => setShowCustomerSuggestions(false), 200);
+                    }}
+                    className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                    placeholder="Nhập tên khách hàng"
+                  />
+                  {showCustomerSuggestions && customerSuggestions.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto overflow-x-hidden">
+                      {customerSuggestions.map((customer) => (
+                        <div
+                          key={customer.id}
+                          onClick={() => handleCustomerSelect(customer)}
+                          className="px-3 py-2 hover:bg-blue-50 active:bg-blue-100 cursor-pointer border-b border-gray-100 last:border-b-0 touch-manipulation min-w-0"
+                        >
+                          <div className="font-medium text-gray-900 text-sm truncate">{customer.name || 'Không có tên'}</div>
+                          <div className="text-xs text-gray-600 truncate">{customer.phone}</div>
+                          {customer.total_orders > 0 && (
+                            <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+                              {customer.total_orders} đơn • {new Intl.NumberFormat('vi-VN').format(customer.total_spent || 0)} đ
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="relative min-w-0">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    SĐT <span className="text-gray-500 text-[10px]">(tùy chọn)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={formData.customer_phone}
+                    onChange={async (e) => {
+                      const newPhone = e.target.value;
+                      setFormData({ ...formData, customer_phone: newPhone });
+                      
+                      // Clear timeout if exists
+                      if (searchTimeout) {
+                        clearTimeout(searchTimeout);
+                      }
+                      
+                      // Debounce search
+                      const timeout = setTimeout(() => {
+                        if (newPhone && newPhone.trim().length >= 2) {
+                          searchCustomers(newPhone);
+                        } else {
+                          setCustomerSuggestions([]);
+                          setShowCustomerSuggestions(false);
+                        }
+                      }, 300);
+                      setSearchTimeout(timeout);
+                      
+                      // Load customer info if phone exists (exact match)
+                      if (newPhone && newPhone.trim().length >= 10) {
+                        try {
+                          const customerResponse = await api.get(`/customers/by-phone/${encodeURIComponent(newPhone.trim())}`);
+                          if (customerResponse.data.data && customerResponse.data.data.name) {
+                            // Auto-fill customer name if found
+                            setFormData(prev => ({ ...prev, customer_name: customerResponse.data.data.name }));
+                            setShowCustomerSuggestions(false);
+                          }
+                        } catch (error) {
+                          // Customer not found or error - keep current name
+                          // Customer not found - log removed for security
+                        }
+                      }
+                      
+                      // Load promotions when customer phone changes
+                      await calculateTotalAndLoadPromotions(formData.items, newPhone);
+                    }}
+                    onFocus={() => {
+                      if (formData.customer_phone && formData.customer_phone.trim().length >= 2) {
+                        searchCustomers(formData.customer_phone);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay hiding suggestions to allow click
+                      setTimeout(() => setShowCustomerSuggestions(false), 200);
+                    }}
+                    className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 touch-manipulation"
+                    placeholder="Nhập số điện thoại"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
+                  {showCustomerSuggestions && customerSuggestions.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto overflow-x-hidden">
+                      {customerSuggestions.map((customer) => (
+                        <div
+                          key={customer.id}
+                          onClick={() => handleCustomerSelect(customer)}
+                          className="px-3 py-2 hover:bg-blue-50 active:bg-blue-100 cursor-pointer border-b border-gray-100 last:border-b-0 touch-manipulation min-w-0"
+                        >
+                          <div className="font-medium text-gray-900 text-sm truncate">{customer.name || 'Không có tên'}</div>
+                          <div className="text-xs text-gray-600 truncate">{customer.phone}</div>
+                          {customer.total_orders > 0 && (
+                            <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+                              {customer.total_orders} đơn • {new Intl.NumberFormat('vi-VN').format(customer.total_spent || 0)} đ
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Sản phẩm</label>
+                <div className="space-y-2 min-w-0">
+                  {formData.items.map((item, index) => (
+                    <div key={index} className="flex flex-col gap-1.5 min-w-0">
+                      <select
+                        value={item.product_id}
+                        onChange={(e) => handleItemChange(index, 'product_id', e.target.value)}
+                        className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 touch-manipulation"
+                        required
+                      >
+                        <option value="">Chọn sản phẩm</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} - {new Intl.NumberFormat('vi-VN').format(product.price)} đ/{product.unit}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex gap-1.5 min-w-0">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.1"
+                          min="0.1"
+                          placeholder="Số lượng"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                          className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                          required
+                        />
+                        {formData.items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(index)}
+                            className="px-3 py-2 flex-shrink-0 bg-red-100 text-red-600 rounded-lg active:bg-red-200 hover:bg-red-200 text-xs font-medium touch-manipulation"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="w-full min-w-0 px-3 py-2 text-sm text-blue-600 active:text-blue-700 hover:text-blue-700 border border-blue-600 rounded-lg active:bg-blue-50 hover:bg-blue-50 font-medium touch-manipulation"
+                  >
+                    + Thêm sản phẩm
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                  Khuyến mãi <span className="text-gray-500 text-[10px]">(tùy chọn)</span>
+                </label>
+                {loadingPromotions ? (
+                  <div className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm bg-gray-50 text-gray-500 break-words">
+                    Đang tải...
+                  </div>
+                ) : applicablePromotions.length > 0 ? (
+                  <select
+                    value={formData.promotion_id}
+                    onChange={(e) => {
+                      const newPromotionId = e.target.value;
+                      setFormData({ ...formData, promotion_id: newPromotionId });
+                      // Recalculate discount when promotion changes
+                      calculateDiscount(orderTotal, newPromotionId);
+                    }}
+                    className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                  >
+                    <option value="">Không áp dụng</option>
+                    {applicablePromotions.map((promo) => (
+                      <option key={promo.id} value={promo.id}>
+                        {promo.name} - {promo.discount_type === 'percentage' 
+                          ? `${promo.discount_value}%` 
+                          : `${new Intl.NumberFormat('vi-VN').format(promo.discount_value)} đ`}
+                        {promo.max_discount_amount && ` (Tối đa: ${new Intl.NumberFormat('vi-VN').format(promo.max_discount_amount)} đ)`}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm bg-gray-50 text-gray-500 break-words">
+                    {formData.items.some(item => item.product_id && item.quantity) 
+                      ? 'Không có khuyến mãi' 
+                      : 'Thêm sản phẩm để xem khuyến mãi'}
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                <textarea
+                  value={formData.note}
+                  onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                  className="w-full min-w-0 px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 touch-manipulation resize-none"
+                  rows="2"
+                  placeholder="Ghi chú (tùy chọn)"
+                />
+              </div>
+
+              {/* Order Summary */}
+              {orderTotal > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Tổng tiền:</span>
+                    <span className="font-medium">{new Intl.NumberFormat('vi-VN').format(orderTotal)} đ</span>
+                  </div>
+                  {orderDiscount > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Giảm giá:</span>
+                        <span className="font-medium text-red-600">-{new Intl.NumberFormat('vi-VN').format(orderDiscount)} đ</span>
+                      </div>
+                      <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-300">
+                        <span>Thành tiền:</span>
+                        <span className="text-blue-600">{new Intl.NumberFormat('vi-VN').format(orderFinal)} đ</span>
+                      </div>
+                    </>
+                  )}
+                  {orderDiscount === 0 && (
+                    <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-300">
+                      <span>Thành tiền:</span>
+                      <span className="text-blue-600">{new Intl.NumberFormat('vi-VN').format(orderTotal)} đ</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-3 border-t border-gray-200 min-w-0">
+                <button
+                  type="submit"
+                  className="w-full min-w-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2.5 rounded-lg hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 font-semibold text-sm shadow-md transition-all touch-manipulation"
+                >
+                  ✓ Tạo đơn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setFormData({
+                      customer_name: '',
+                      customer_phone: '',
+                      items: [{ product_id: '', quantity: '' }],
+                      note: '',
+                      promotion_id: '',
+                    });
+                    setApplicablePromotions([]);
+                    setLoadingPromotions(false);
+                  }}
+                  className="w-full min-w-0 bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm transition-all touch-manipulation"
+                >
+                  Hủy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Order Modal */}
+      {showCompleteModal && orderToComplete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-2 z-50 overflow-y-auto overflow-x-hidden">
+          <div className="bg-white rounded-t-2xl sm:rounded-lg max-w-md w-full p-4 sm:p-5 max-h-[90vh] sm:max-h-[85vh] overflow-y-auto overflow-x-hidden my-0 sm:my-auto shadow-xl pb-safe sm:pb-5">
+            <div className="flex items-center justify-between mb-3 sticky top-0 bg-white pb-2 border-b z-10 min-w-0">
+              <h2 className="text-base sm:text-lg font-bold text-gray-900 truncate pr-2">Hoàn thành đơn hàng</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCompleteModal(false);
+                  setOrderToComplete(null);
+                  setShouldPrint(false);
+                }}
+                disabled={printing}
+                className="text-gray-500 hover:text-gray-700 text-xl w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 touch-manipulation disabled:opacity-50"
+                aria-label="Đóng"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-3 min-w-0">
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-2.5 rounded-r-lg overflow-hidden">
+                <p className="text-xs text-gray-600 mb-0.5 truncate">Đơn hàng</p>
+                <p className="text-sm font-bold text-gray-900 truncate">
+                  #{orderToComplete.code}
+                </p>
+                <p className="text-base font-bold text-blue-600 mt-1 break-words">
+                  {parseFloat(orderToComplete.final_amount || orderToComplete.total_amount || 0).toLocaleString('vi-VN')} đ
+                </p>
+              </div>
+              
+              <div className="min-w-0">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                  Hình thức thanh toán <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2 min-w-0">
+                  <label className={`flex items-center justify-center gap-2 p-2.5 border-2 rounded-lg cursor-pointer transition-all touch-manipulation min-w-0 ${
+                    paymentMethod === 'cash' 
+                      ? 'border-green-500 bg-green-50' 
+                      : 'border-gray-300'
+                  } active:scale-95`}>
+                    <input
+                      type="radio"
+                      name="payment_method"
+                      value="cash"
+                      checked={paymentMethod === 'cash'}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="text-xs font-medium text-center break-words">💰 Tiền mặt</span>
+                  </label>
+                  <label className={`flex items-center justify-center gap-2 p-2.5 border-2 rounded-lg cursor-pointer transition-all touch-manipulation min-w-0 ${
+                    paymentMethod === 'transfer' 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-300'
+                  } active:scale-95`}>
+                    <input
+                      type="radio"
+                      name="payment_method"
+                      value="transfer"
+                      checked={paymentMethod === 'transfer'}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="text-xs font-medium text-center break-words">🏦 Chuyển khoản</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2 border-t border-gray-200 min-w-0">
+                <button
+                  onClick={handleCompleteOrder}
+                  disabled={printing}
+                  className="w-full min-w-0 bg-gradient-to-r from-green-500 to-green-600 text-white py-2.5 rounded-lg hover:from-green-600 hover:to-green-700 active:from-green-700 active:to-green-800 font-medium text-sm shadow-md transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {printing ? '⏳ Đang xử lý...' : '✓ Hoàn thành'}
+                </button>
+                
+                <button
+                  onClick={async () => {
+                    if (!orderToComplete) return;
+                    try {
+                      setPrinting(true);
+                      // Complete order first
+                      await api.post(`/orders/${orderToComplete.id}/status`, { status: 'completed' });
+                      // Then print
+                      try {
+                        await api.post(`/print/bill/${orderToComplete.id}`);
+                        alert('Đơn hàng đã hoàn thành và bill đã được in!');
+                      } catch (printError) {
+                        console.error('Print error:', printError);
+                        alert('Đơn hàng đã hoàn thành nhưng in bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                      }
+                      setShowCompleteModal(false);
+                      setOrderToComplete(null);
+                      setShouldPrint(false);
+                      loadOrders();
+                      loadStats();
+                    } catch (error) {
+                      alert(error.response?.data?.error || 'Cập nhật thất bại');
+                    } finally {
+                      setPrinting(false);
+                    }
+                  }}
+                  disabled={printing}
+                  className="w-full min-w-0 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2.5 rounded-lg hover:from-blue-600 hover:to-blue-700 active:from-blue-700 active:to-blue-800 font-medium text-sm shadow-md transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {printing ? '⏳ Đang xử lý...' : '✓ Hoàn thành & 🖨️ In'}
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setShowCompleteModal(false);
+                    setOrderToComplete(null);
+                    setShouldPrint(false);
+                  }}
+                  disabled={printing}
+                  className="w-full min-w-0 bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default Home;
+
