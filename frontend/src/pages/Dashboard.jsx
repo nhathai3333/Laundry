@@ -11,15 +11,12 @@ function Dashboard() {
     todayOrders: 0,
     totalCustomers: 0,
     activeOrders: 0,
-    revenueByShift: 0,
-    revenueByProduct: 0,
-    averageOrderValue: 0,
   });
   const [revenueByStore, setRevenueByStore] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stores, setStores] = useState([]);
-  const savedFilters = getSavedFilters();
-  const [selectedStoreId, setSelectedStoreId] = useState(savedFilters.selectedStoreId);
+  // Lazy init to avoid reading localStorage on every render
+  const [selectedStoreId, setSelectedStoreId] = useState(() => getSavedFilters().selectedStoreId);
 
   // Root admin statistics
   const [rootStats, setRootStats] = useState({
@@ -48,17 +45,23 @@ function Dashboard() {
     if (isRoot()) {
       loadRootStatistics();
     } else {
-      if (isAdmin()) {
-        loadStores();
-      }
       loadData();
     }
   }, [selectedStoreId]);
 
+  // Load stores list once for admin (avoid reloading on every store filter change)
+  useEffect(() => {
+    if (!isRoot() && isAdmin()) {
+      loadStores();
+    }
+  }, []);
+
   // Save store filter whenever it changes
   useEffect(() => {
     if (isAdmin()) {
-      saveFilters(selectedStoreId, savedFilters.selectedMonth, savedFilters.selectedYear);
+      // Preserve month/year filters used by other pages; only update store_id here
+      const { selectedMonth, selectedYear } = getSavedFilters();
+      saveFilters(selectedStoreId, selectedMonth, selectedYear);
     }
   }, [selectedStoreId]);
 
@@ -193,25 +196,6 @@ function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
-
-
-  const statusColors = {
-    created: 'bg-gray-100 text-gray-800',
-    washing: 'bg-blue-100 text-blue-800',
-    drying: 'bg-yellow-100 text-yellow-800',
-    waiting_pickup: 'bg-orange-100 text-orange-800',
-    completed: 'bg-green-100 text-green-800',
-    cancelled: 'bg-red-100 text-red-800',
-  };
-
-  const statusLabels = {
-    created: 'Đã tạo',
-    washing: 'Đang giặt',
-    drying: 'Đang sấy',
-    waiting_pickup: 'Chờ lấy đồ',
-    completed: 'Hoàn thành',
-    cancelled: 'Hủy',
   };
 
   // Root admin dashboard

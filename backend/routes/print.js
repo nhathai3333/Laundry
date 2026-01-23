@@ -11,6 +11,107 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticate);
 
+// Get bill data (ESC/POS commands) for Bluetooth printing
+router.get('/bill-data/:orderId', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    // Validate orderId
+    const orderIdValidation = validateId(orderId);
+    if (!orderIdValidation.valid) {
+      return res.status(400).json({ error: 'Order ID không hợp lệ' });
+    }
+
+    // Get order details with promotion
+    const order = await queryOne(`
+      SELECT o.*, 
+        c.name as customer_name, 
+        c.phone as customer_phone,
+        p.name as promotion_name,
+        p.discount_type as promotion_discount_type,
+        p.discount_value as promotion_discount_value
+      FROM orders o
+      LEFT JOIN customers c ON o.customer_id = c.id
+      LEFT JOIN promotions p ON o.promotion_id = p.id
+      WHERE o.id = ?
+    `, [orderId]);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Check permission (same as print route)
+    if (req.user.role === 'employer') {
+      const user = await queryOne('SELECT store_id FROM users WHERE id = ? AND role = ?', [req.user.id, 'employer']);
+      const userStoreId = user?.store_id;
+      if (!userStoreId) {
+        return res.status(403).json({ error: 'Tài khoản không có cửa hàng được gán' });
+      }
+      if (order.store_id !== userStoreId) {
+        return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng mình' });
+      }
+    } else if (req.user.role === 'admin' && req.user.role !== 'root') {
+      if (order.store_id) {
+        const store = await queryOne('SELECT admin_id FROM stores WHERE id = ?', [order.store_id]);
+        if (!store || store.admin_id !== req.user.id) {
+          return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+        }
+      }
+    } else if (req.user.role === 'root') {
+      return res.status(403).json({ error: 'Root admin không thể in đơn hàng' });
+    }
+
+    // Get order items
+    const items = await query(`
+      SELECT oi.*, p.name as product_name, p.unit as product_unit
+      FROM order_items oi
+      JOIN products p ON oi.product_id = p.id
+      WHERE oi.order_id = ?
+    `, [orderId]);
+
+    // Get store_id for settings lookup
+    let storeId = order.store_id || null;
+    if (order.assigned_to) {
+      const assignedUser = await queryOne('SELECT store_id FROM users WHERE id = ?', [order.assigned_to]);
+      if (assignedUser && assignedUser.store_id) {
+        storeId = assignedUser.store_id;
+      }
+    }
+    if (!storeId && order.created_by) {
+      const createdUser = await queryOne('SELECT store_id FROM users WHERE id = ?', [order.created_by]);
+      if (createdUser && createdUser.store_id) {
+        storeId = createdUser.store_id;
+      }
+    }
+    
+    // Get printer settings
+    let settings = await query(`SELECT * FROM settings WHERE store_id = ?`, [storeId]);
+    if (settings.length === 0) {
+      settings = await query(`SELECT * FROM settings WHERE store_id IS NULL`);
+    }
+    
+    const settingsObj = {};
+    settingsObj.paper_size = '80mm';
+    settings.forEach((s) => {
+      settingsObj[s.key] = s.value;
+    });
+
+    const paperSize = settingsObj.paper_size || '80mm';
+    
+    // Generate ESC/POS commands for bill
+    const billData = generateBill(order, items, paperSize, settingsObj);
+    
+    // Return as base64 for easy transfer
+    res.json({
+      success: true,
+      data: billData.toString('base64'),
+      paperSize: paperSize
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Lỗi khi tạo bill data' });
+  }
+});
+
 // Print bill (Admin and Employer)
 router.post('/bill/:orderId', async (req, res) => {
   try {
@@ -140,7 +241,7 @@ router.post('/bill/:orderId', async (req, res) => {
     // Print logs removed for security
 
     // Generate ESC/POS commands for bill
-    const billData = generateBill(order, items, paperSize);
+    const billData = generateBill(order, items, paperSize, settingsObj);
 
     // Send to printer
     const printSuccess = await sendToPrinter(printerIP, printerPort, billData);
@@ -157,7 +258,7 @@ router.post('/bill/:orderId', async (req, res) => {
   }
 });
 
-function generateBill(order, items, paperSize) {
+function generateBill(order, items, paperSize, settingsObj = {}) {
   const ESC = '\x1B';
   const GS = '\x1D';
   const commands = [];
@@ -168,11 +269,30 @@ function generateBill(order, items, paperSize) {
   // Set alignment center
   commands.push(ESC + 'a' + '\x01');
 
-  // Title
+  // Title - Use custom store name if set, otherwise default
+  const storeName = (settingsObj.bill_store_name && settingsObj.bill_store_name.trim()) || 'QUẢN LÝ CỬA HÀNG';
   commands.push(ESC + '!' + '\x08'); // Double height
-  commands.push('QUẢN LÝ CỬA HÀNG\n');
+  commands.push(storeName + '\n');
   commands.push(ESC + '!' + '\x00'); // Normal
   commands.push('-------------------\n');
+
+  // Store address if set
+  if (settingsObj.bill_store_address && settingsObj.bill_store_address.trim()) {
+    commands.push(ESC + 'a' + '\x01'); // Center align
+    commands.push(settingsObj.bill_store_address.trim() + '\n');
+  }
+
+  // Store phone if set
+  if (settingsObj.bill_store_phone && settingsObj.bill_store_phone.trim()) {
+    commands.push(ESC + 'a' + '\x01'); // Center align
+    commands.push(`ĐT: ${settingsObj.bill_store_phone.trim()}\n`);
+  }
+
+  // Add separator if store info was shown
+  if ((settingsObj.bill_store_address && settingsObj.bill_store_address.trim()) || 
+      (settingsObj.bill_store_phone && settingsObj.bill_store_phone.trim())) {
+    commands.push('-------------------\n');
+  }
 
   // Order info
   commands.push(ESC + 'a' + '\x00'); // Left align
@@ -227,7 +347,8 @@ function generateBill(order, items, paperSize) {
 
   commands.push('\n\n');
   commands.push(ESC + 'a' + '\x01'); // Center
-  commands.push('Cảm ơn quý khách!\n');
+  const footerMessage = (settingsObj.bill_footer_message && settingsObj.bill_footer_message.trim()) || 'Cảm ơn quý khách!';
+  commands.push(footerMessage + '\n');
   commands.push('\n\n\n');
 
   // Cut paper

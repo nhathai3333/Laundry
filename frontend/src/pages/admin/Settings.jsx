@@ -7,6 +7,11 @@ function Settings() {
     printer_ip: '192.168.1.100',
     printer_port: '9100',
     paper_size: '80mm',
+    print_method: 'server',
+    bill_store_name: '',
+    bill_store_address: '',
+    bill_store_phone: '',
+    bill_footer_message: 'Cảm ơn quý khách!',
   });
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState('');
@@ -182,6 +187,100 @@ function Settings() {
             <p className="text-xs text-gray-500 mt-1">
               Chọn cỡ giấy phù hợp với máy in của bạn
             </p>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200">
+            <h3 className="text-base font-semibold text-gray-800 mb-3">Cài đặt in bill</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phương thức in *
+              </label>
+              <select
+                value={settings.print_method || 'server'}
+                onChange={(e) => setSettings({ ...settings, print_method: e.target.value })}
+                className="w-full px-3 py-2.5 border rounded-lg text-base"
+                required
+              >
+                <option value="server">Server (IP/Port) - In qua mạng</option>
+                <option value="bluetooth">Bluetooth - In trực tiếp từ điện thoại</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Cửa hàng sẽ bắt buộc sử dụng phương thức in đã được cài đặt. Bluetooth chỉ hoạt động trên Android Chrome.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Định dạng bill</h4>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tên cửa hàng (Header)
+                </label>
+                <input
+                  type="text"
+                  value={settings.bill_store_name || ''}
+                  onChange={(e) => setSettings({ ...settings, bill_store_name: e.target.value })}
+                  className="w-full px-3 py-2.5 border rounded-lg text-base"
+                  placeholder="QUẢN LÝ CỬA HÀNG"
+                  maxLength={50}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Tên hiển thị ở đầu bill. Để trống sẽ dùng "QUẢN LÝ CỬA HÀNG"
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Địa chỉ cửa hàng
+                </label>
+                <textarea
+                  value={settings.bill_store_address || ''}
+                  onChange={(e) => setSettings({ ...settings, bill_store_address: e.target.value })}
+                  className="w-full px-3 py-2.5 border rounded-lg text-base"
+                  placeholder="123 Đường ABC, Quận XYZ, TP.HCM"
+                  rows="2"
+                  maxLength={200}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Địa chỉ hiển thị trên bill. Để trống sẽ không hiển thị
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SĐT cửa hàng
+                </label>
+                <input
+                  type="text"
+                  value={settings.bill_store_phone || ''}
+                  onChange={(e) => setSettings({ ...settings, bill_store_phone: e.target.value })}
+                  className="w-full px-3 py-2.5 border rounded-lg text-base"
+                  placeholder="0123456789"
+                  maxLength={20}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Số điện thoại hiển thị trên bill. Để trống sẽ không hiển thị
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Thông điệp cuối bill (Footer)
+                </label>
+                <input
+                  type="text"
+                  value={settings.bill_footer_message || 'Cảm ơn quý khách!'}
+                  onChange={(e) => setSettings({ ...settings, bill_footer_message: e.target.value })}
+                  className="w-full px-3 py-2.5 border rounded-lg text-base"
+                  placeholder="Cảm ơn quý khách!"
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Thông điệp hiển thị ở cuối bill
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="pt-4">

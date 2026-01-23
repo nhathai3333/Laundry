@@ -58,7 +58,11 @@ export const saveFilters = (selectedStoreId, selectedMonth, selectedYear) => {
       selectedMonth: selectedMonth || new Date().getMonth() + 1,
       selectedYear: selectedYear || new Date().getFullYear(),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    // Avoid redundant writes
+    const next = JSON.stringify(filters);
+    const prev = localStorage.getItem(STORAGE_KEY);
+    if (prev === next) return;
+    localStorage.setItem(STORAGE_KEY, next);
   } catch (error) {
     console.error('Error saving filters:', error);
   }

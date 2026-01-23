@@ -3,6 +3,7 @@ import api from '../utils/api';
 import { getAuth } from '../utils/auth';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDaysInMonth } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { printBill } from '../utils/printBill';
 
 function EmployerHome() {
   const [stats, setStats] = useState({
@@ -123,11 +124,11 @@ function EmployerHome() {
       if (shouldPrint) {
         setPrinting(true);
         try {
-          await api.post(`/print/bill/${orderToComplete.id}`);
-          alert('Đơn hàng đã hoàn thành và bill đã được in!');
+          const result = await printBill(orderToComplete.id);
+          alert(`Đơn hàng đã hoàn thành và bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
         } catch (printError) {
           console.error('Print error:', printError);
-          alert('Đơn hàng đã hoàn thành nhưng in bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+          alert(printError.message || 'Đơn hàng đã hoàn thành nhưng in bill thất bại. Vui lòng kiểm tra kết nối máy in.');
         } finally {
           setPrinting(false);
         }
@@ -507,11 +508,11 @@ function EmployerHome() {
                     onClick={async () => {
                       setPrinting(true);
                       try {
-                        await api.post(`/print/bill/${order.id}`);
-                        alert('Bill đã được in!');
+                        const result = await printBill(order.id);
+                        alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
                       } catch (printError) {
                         console.error('Print error:', printError);
-                        alert('In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                        alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
                       } finally {
                         setPrinting(false);
                       }

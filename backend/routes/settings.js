@@ -42,6 +42,19 @@ router.get('/', async (req, res) => {
       settingsObj.printer_ip = '192.168.1.100';
       settingsObj.printer_port = '9100';
       settingsObj.paper_size = '80mm';
+      settingsObj.print_method = 'server';
+      settingsObj.bill_store_name = '';
+      settingsObj.bill_store_address = '';
+      settingsObj.bill_store_phone = '';
+      settingsObj.bill_footer_message = 'Cảm ơn quý khách!';
+    } else {
+      // Set defaults if not present
+      if (!settingsObj.print_method) {
+        settingsObj.print_method = 'server';
+      }
+      if (settingsObj.bill_footer_message === undefined || settingsObj.bill_footer_message === null) {
+        settingsObj.bill_footer_message = 'Cảm ơn quý khách!';
+      }
     }
     
     res.json({ data: settingsObj, store_id: storeId });
@@ -54,7 +67,7 @@ router.get('/', async (req, res) => {
 // Update settings (Admin or Employer)
 router.put('/', async (req, res) => {
   try {
-    const { printer_ip, printer_port, paper_size, store_id } = req.body;
+    const { printer_ip, printer_port, paper_size, print_method, bill_store_name, bill_store_address, bill_store_phone, bill_footer_message, store_id } = req.body;
     
     // Validate inputs
     if (printer_ip !== undefined) {
@@ -75,6 +88,13 @@ router.put('/', async (req, res) => {
       const paperSizeValidation = validateEnum(paper_size, ['80mm', '58mm'], 'Kích thước giấy');
       if (!paperSizeValidation.valid) {
         return res.status(400).json({ error: paperSizeValidation.error });
+      }
+    }
+
+    if (print_method !== undefined) {
+      const methodValidation = validateEnum(print_method, ['server', 'bluetooth'], 'Phương thức in');
+      if (!methodValidation.valid) {
+        return res.status(400).json({ error: 'Phương thức in không hợp lệ. Chỉ chấp nhận: server hoặc bluetooth' });
       }
     }
     
@@ -132,6 +152,47 @@ router.put('/', async (req, res) => {
           VALUES (?, ?, ?)
           ON DUPLICATE KEY UPDATE value = VALUES(value)
         `, ['paper_size', paperSizeValue, targetStoreId]);
+      }
+      if (print_method !== undefined) {
+        const methodValidation = validateEnum(print_method, ['server', 'bluetooth'], 'Phương thức in');
+        const methodValue = methodValidation.valid ? methodValidation.value : 'server';
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['print_method', methodValue, targetStoreId]);
+      }
+      if (bill_store_name !== undefined) {
+        const nameSanitized = sanitizeString(bill_store_name || '');
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_store_name', nameSanitized.value, targetStoreId]);
+      }
+      if (bill_store_address !== undefined) {
+        const addressSanitized = sanitizeString(bill_store_address || '');
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_store_address', addressSanitized.value, targetStoreId]);
+      }
+      if (bill_store_phone !== undefined) {
+        const phoneSanitized = sanitizeString(bill_store_phone || '');
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_store_phone', phoneSanitized.value, targetStoreId]);
+      }
+      if (bill_footer_message !== undefined) {
+        const footerSanitized = sanitizeString(bill_footer_message || 'Cảm ơn quý khách!');
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_footer_message', footerSanitized.value, targetStoreId]);
       }
     });
 

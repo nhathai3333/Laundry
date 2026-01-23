@@ -3,6 +3,7 @@ import api from '../utils/api';
 import { getAuth } from '../utils/auth';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDaysInMonth } from 'date-fns';
 import { isAdmin } from '../utils/auth';
+import { printBill } from '../utils/printBill';
 
 function Home() {
   const [orders, setOrders] = useState([]);
@@ -624,11 +625,11 @@ function Home() {
                         onClick={async () => {
                           setPrinting(true);
                           try {
-                            await api.post(`/print/bill/${order.id}`);
-                            alert('Bill đã được in!');
+                            const result = await printBill(order.id);
+                            alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
                           } catch (printError) {
                             console.error('Print error:', printError);
-                            alert('In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                            alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
                           } finally {
                             setPrinting(false);
                           }
