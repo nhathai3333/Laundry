@@ -164,21 +164,7 @@ router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.bod
       userStatus = 'pending'; // Admin mới tạo bởi root sẽ pending
     }
 
-    // Validate password strength
-    const passwordValidation = validatePasswordStrength(password);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ 
-        error: 'Mật khẩu không đủ mạnh',
-        details: passwordValidation.errors 
-      });
-    }
-
-    // Check if password contains user information
-    if (containsUserInfo(password, { name, phone: phoneValidation.value })) {
-      return res.status(400).json({ 
-        error: 'Mật khẩu không được chứa thông tin cá nhân (tên, số điện thoại)' 
-      });
-    }
+    // Password validation removed - no requirements
 
     const nameSanitized = sanitizeString(name);
     if (!nameSanitized.valid || nameSanitized.value === '') {
@@ -316,22 +302,7 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
       }
     }
     if (password) {
-      // Validate password strength
-      const passwordValidation = validatePasswordStrength(password);
-      if (!passwordValidation.valid) {
-        return res.status(400).json({ 
-          error: 'Mật khẩu không đủ mạnh',
-          details: passwordValidation.errors 
-        });
-      }
-
-      // Check if password contains user information
-      if (containsUserInfo(password, { name: oldUser.name, phone: oldUser.phone })) {
-        return res.status(400).json({ 
-          error: 'Mật khẩu không được chứa thông tin cá nhân (tên, số điện thoại)' 
-        });
-      }
-
+      // Password validation removed - no requirements
       const password_hash = await hashPassword(password);
       updates.push('password_hash = ?');
       values.push(password_hash);

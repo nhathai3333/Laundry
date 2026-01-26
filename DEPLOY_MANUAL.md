@@ -235,6 +235,7 @@ pm2 logs laundry-backend
 # Test API
 curl http://localhost:5000/api/health
 ```
+DROP DATABASE IF EXISTS laundry66;
 
 Nếu thấy response JSON với `status: 'ok'` là thành công!
 

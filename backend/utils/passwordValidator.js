@@ -9,54 +9,15 @@
  * @returns {Object} { valid: boolean, errors: string[] }
  */
 export const validatePasswordStrength = (password) => {
-  const errors = [];
-
+  // Only check if password is not empty
   if (!password) {
     return { valid: false, errors: ['Mật khẩu là bắt buộc'] };
   }
 
-  // Minimum length
-  if (password.length < 8) {
-    errors.push('Mật khẩu phải có ít nhất 8 ký tự');
-  }
-
-  // Maximum length (prevent DoS)
-  if (password.length > 128) {
-    errors.push('Mật khẩu không được vượt quá 128 ký tự');
-  }
-
-  // At least one uppercase letter
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Mật khẩu phải có ít nhất 1 chữ hoa');
-  }
-
-  // At least one lowercase letter
-  if (!/[a-z]/.test(password)) {
-    errors.push('Mật khẩu phải có ít nhất 1 chữ thường');
-  }
-
-  // At least one number
-  if (!/[0-9]/.test(password)) {
-    errors.push('Mật khẩu phải có ít nhất 1 số');
-  }
-
-  // At least one special character
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-    errors.push('Mật khẩu phải có ít nhất 1 ký tự đặc biệt (!@#$%^&*...)');
-  }
-
-  // Check for common weak passwords
-  const commonPasswords = [
-    'password', '12345678', 'qwerty', 'abc123', 'password123',
-    'admin123', '123456789', 'welcome', 'monkey', '1234567'
-  ];
-  if (commonPasswords.some(common => password.toLowerCase().includes(common))) {
-    errors.push('Mật khẩu quá phổ biến, vui lòng chọn mật khẩu khác');
-  }
-
+  // No other requirements - accept any password
   return {
-    valid: errors.length === 0,
-    errors: errors.length > 0 ? errors : [],
+    valid: true,
+    errors: [],
     strength: calculatePasswordStrength(password)
   };
 };
@@ -101,21 +62,6 @@ const calculatePasswordStrength = (password) => {
  * @returns {boolean}
  */
 export const containsUserInfo = (password, userInfo = {}) => {
-  const passwordLower = password.toLowerCase();
-  
-  if (userInfo.name) {
-    const nameParts = userInfo.name.toLowerCase().split(' ').filter(p => p.length > 2);
-    if (nameParts.some(part => passwordLower.includes(part))) {
-      return true;
-    }
-  }
-  
-  if (userInfo.phone) {
-    const phoneDigits = userInfo.phone.replace(/\D/g, '');
-    if (phoneDigits.length >= 4 && passwordLower.includes(phoneDigits.slice(-4))) {
-      return true;
-    }
-  }
-  
+  // No longer checking - always return false
   return false;
 };

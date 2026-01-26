@@ -219,21 +219,7 @@ router.post('/', authorize('admin'), async (req, res) => {
     // Create user account for the store only if not using shared account
     if (!shared_account_id) {
       try {
-        // Validate password strength
-        const passwordValidation = validatePasswordStrength(account_password);
-        if (!passwordValidation.valid) {
-          return res.status(400).json({ 
-            error: 'Mật khẩu không đủ mạnh',
-            details: passwordValidation.errors 
-          });
-        }
-
-        // Check if password contains user information
-        if (containsUserInfo(account_password, { name: account_name, phone: trimmedPhone })) {
-          return res.status(400).json({ 
-            error: 'Mật khẩu không được chứa thông tin cá nhân (tên, số điện thoại)' 
-          });
-        }
+        // Password validation removed - no requirements
 
         const password_hash = await hashPassword(account_password);
         
