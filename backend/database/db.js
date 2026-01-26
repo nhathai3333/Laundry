@@ -59,17 +59,54 @@ async function initializeDatabase() {
 
     const connection = await pool.getConnection();
     try {
-      // Execute all CREATE TABLE statements
+      // Execute all CREATE TABLE and ALTER TABLE statements
       for (const statement of statements) {
         if (statement) {
           try {
             await connection.query(statement);
           } catch (error) {
             // Ignore table already exists errors
+            // Ignore duplicate foreign key constraint errors (will be handled separately)
             if (error.code !== 'ER_TABLE_EXISTS_ERROR' && 
-                !error.message.includes('already exists')) {
+                error.code !== 'ER_FK_DUP_NAME' &&
+                !error.message.includes('already exists') &&
+                !error.message.includes('Duplicate foreign key constraint name')) {
               throw error;
             }
+          }
+        }
+      }
+      
+      // Add foreign keys to stores table after users table is created
+      // Check if foreign keys already exist before adding
+      const foreignKeyStatements = [
+        { name: 'fk_stores_admin_id', table: 'stores', column: 'admin_id', refTable: 'users', refColumn: 'id' },
+        { name: 'fk_stores_shared_account_id', table: 'stores', column: 'shared_account_id', refTable: 'users', refColumn: 'id' }
+      ];
+      
+      for (const fk of foreignKeyStatements) {
+        try {
+          // Check if foreign key exists
+          const [existing] = await connection.query(`
+            SELECT COUNT(*) as count 
+            FROM information_schema.table_constraints 
+            WHERE table_schema = ? 
+            AND table_name = ? 
+            AND constraint_name = ?
+            AND constraint_type = 'FOREIGN KEY'
+          `, [dbName, fk.table, fk.name]);
+          
+          if (existing[0].count === 0) {
+            await connection.query(`
+              ALTER TABLE ${fk.table} 
+              ADD CONSTRAINT ${fk.name} 
+              FOREIGN KEY (${fk.column}) REFERENCES ${fk.refTable}(${fk.refColumn}) ON DELETE SET NULL
+            `);
+          }
+        } catch (error) {
+          // Ignore if foreign key already exists or table doesn't exist
+          if (error.code !== 'ER_FK_DUP_NAME' && error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'ER_CANT_CREATE_TABLE') {
+            console.warn(`Warning adding foreign key ${fk.name}: ${error.message}`);
           }
         }
       }

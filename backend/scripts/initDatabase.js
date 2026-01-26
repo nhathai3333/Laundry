@@ -40,6 +40,7 @@ async function ensureSchema() {
       const schema = readFileSync(schemaPath, 'utf-8');
       
       // Remove CREATE INDEX IF NOT EXISTS and replace with logic to check first
+      // Also remove ALTER TABLE statements (will be executed separately)
       let processedSchema = schema;
       
       // Replace CREATE INDEX IF NOT EXISTS with a safer approach
@@ -50,54 +51,47 @@ async function ensureSchema() {
         }
       );
       
+      // Extract ALTER TABLE statements to execute separately
+      const alterTableStatements = [];
+      processedSchema = processedSchema.replace(
+        /ALTER TABLE\s+(\w+)\s+ADD CONSTRAINT\s+(\w+)\s+FOREIGN KEY\s+\(([^)]+)\)\s+REFERENCES\s+(\w+)\(([^)]+)\)\s+ON DELETE\s+(\w+);/gi,
+        (match, table, constraint, column, refTable, refColumn, onDelete) => {
+          alterTableStatements.push({ table, constraint, column, refTable, refColumn, onDelete });
+          return `-- ALTER TABLE ${table} will be executed separately`;
+        }
+      );
+      
       const connection = await pool.getConnection();
       try {
-        // Execute all CREATE TABLE statements
+        // Execute all CREATE TABLE statements (without ALTER TABLE)
         await connection.query(processedSchema);
         
-        // Add foreign keys to stores table after users table is created
-        // Check if foreign keys already exist before adding
-        try {
-          const [fkCheck] = await connection.query(`
-            SELECT COUNT(*) as count 
-            FROM information_schema.table_constraints 
-            WHERE table_schema = ? 
-            AND table_name = 'stores' 
-            AND constraint_name = 'fk_stores_admin_id'
-          `, [process.env.MYSQL_DATABASE || 'laundry66']);
-          
-          if (fkCheck[0].count === 0) {
-            await connection.query(`
-              ALTER TABLE stores 
-              ADD CONSTRAINT fk_stores_admin_id 
-              FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL
-            `);
-          }
-        } catch (error) {
-          if (error.code !== 'ER_DUP_KEY' && error.code !== 'ER_DUP_KEYNAME') {
-            console.warn(`Warning adding foreign key fk_stores_admin_id: ${error.message}`);
-          }
-        }
-        
-        try {
-          const [fkCheck] = await connection.query(`
-            SELECT COUNT(*) as count 
-            FROM information_schema.table_constraints 
-            WHERE table_schema = ? 
-            AND table_name = 'stores' 
-            AND constraint_name = 'fk_stores_shared_account_id'
-          `, [process.env.MYSQL_DATABASE || 'laundry66']);
-          
-          if (fkCheck[0].count === 0) {
-            await connection.query(`
-              ALTER TABLE stores 
-              ADD CONSTRAINT fk_stores_shared_account_id 
-              FOREIGN KEY (shared_account_id) REFERENCES users(id) ON DELETE SET NULL
-            `);
-          }
-        } catch (error) {
-          if (error.code !== 'ER_DUP_KEY' && error.code !== 'ER_DUP_KEYNAME') {
-            console.warn(`Warning adding foreign key fk_stores_shared_account_id: ${error.message}`);
+        // Add foreign keys from ALTER TABLE statements after all tables are created
+        for (const fk of alterTableStatements) {
+          try {
+            // Check if foreign key exists
+            const [fkCheck] = await connection.query(`
+              SELECT COUNT(*) as count 
+              FROM information_schema.table_constraints 
+              WHERE table_schema = ? 
+              AND table_name = ? 
+              AND constraint_name = ?
+              AND constraint_type = 'FOREIGN KEY'
+            `, [process.env.MYSQL_DATABASE || 'laundry66', fk.table, fk.constraint]);
+            
+            if (fkCheck[0].count === 0) {
+              const onDeleteClause = fk.onDelete || 'SET NULL';
+              await connection.query(`
+                ALTER TABLE ${fk.table} 
+                ADD CONSTRAINT ${fk.constraint} 
+                FOREIGN KEY (${fk.column}) REFERENCES ${fk.refTable}(${fk.refColumn}) ON DELETE ${onDeleteClause}
+              `);
+            }
+          } catch (error) {
+            // Ignore if foreign key already exists or table doesn't exist
+            if (error.code !== 'ER_FK_DUP_NAME' && error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'ER_CANT_CREATE_TABLE') {
+              console.warn(`Warning adding foreign key ${fk.constraint}: ${error.message}`);
+            }
           }
         }
         
