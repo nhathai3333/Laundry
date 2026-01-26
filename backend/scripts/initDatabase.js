@@ -55,6 +55,52 @@ async function ensureSchema() {
         // Execute all CREATE TABLE statements
         await connection.query(processedSchema);
         
+        // Add foreign keys to stores table after users table is created
+        // Check if foreign keys already exist before adding
+        try {
+          const [fkCheck] = await connection.query(`
+            SELECT COUNT(*) as count 
+            FROM information_schema.table_constraints 
+            WHERE table_schema = ? 
+            AND table_name = 'stores' 
+            AND constraint_name = 'fk_stores_admin_id'
+          `, [process.env.MYSQL_DATABASE || 'laundry66']);
+          
+          if (fkCheck[0].count === 0) {
+            await connection.query(`
+              ALTER TABLE stores 
+              ADD CONSTRAINT fk_stores_admin_id 
+              FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL
+            `);
+          }
+        } catch (error) {
+          if (error.code !== 'ER_DUP_KEY' && error.code !== 'ER_DUP_KEYNAME') {
+            console.warn(`Warning adding foreign key fk_stores_admin_id: ${error.message}`);
+          }
+        }
+        
+        try {
+          const [fkCheck] = await connection.query(`
+            SELECT COUNT(*) as count 
+            FROM information_schema.table_constraints 
+            WHERE table_schema = ? 
+            AND table_name = 'stores' 
+            AND constraint_name = 'fk_stores_shared_account_id'
+          `, [process.env.MYSQL_DATABASE || 'laundry66']);
+          
+          if (fkCheck[0].count === 0) {
+            await connection.query(`
+              ALTER TABLE stores 
+              ADD CONSTRAINT fk_stores_shared_account_id 
+              FOREIGN KEY (shared_account_id) REFERENCES users(id) ON DELETE SET NULL
+            `);
+          }
+        } catch (error) {
+          if (error.code !== 'ER_DUP_KEY' && error.code !== 'ER_DUP_KEYNAME') {
+            console.warn(`Warning adding foreign key fk_stores_shared_account_id: ${error.message}`);
+          }
+        }
+        
         // Now create indexes separately, checking if they exist first
         const indexStatements = [
           { name: 'idx_orders_status', table: 'orders', columns: 'status' },

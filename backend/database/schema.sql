@@ -1,4 +1,4 @@
--- Stores table (must be created first)
+-- Stores table (must be created first, without foreign keys to users)
 CREATE TABLE IF NOT EXISTS stores (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -8,9 +8,7 @@ CREATE TABLE IF NOT EXISTS stores (
     shared_account_id INT,
     status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (shared_account_id) REFERENCES users(id) ON DELETE SET NULL
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Users table
@@ -29,6 +27,15 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Add foreign keys to stores table after users table is created
+ALTER TABLE stores 
+ADD CONSTRAINT fk_stores_admin_id 
+FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE stores 
+ADD CONSTRAINT fk_stores_shared_account_id 
+FOREIGN KEY (shared_account_id) REFERENCES users(id) ON DELETE SET NULL;
 
 -- Employees table
 CREATE TABLE IF NOT EXISTS employees (
@@ -68,6 +75,26 @@ CREATE TABLE IF NOT EXISTS customers (
     note TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Promotions table (must be created before orders)
+CREATE TABLE IF NOT EXISTS promotions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    type ENUM('order_count', 'bill_amount') NOT NULL,
+    min_order_count INT DEFAULT NULL,
+    min_bill_amount DECIMAL(10, 2) DEFAULT NULL,
+    discount_type ENUM('percentage', 'fixed') NOT NULL,
+    discount_value DECIMAL(10, 2) NOT NULL,
+    max_discount_amount DECIMAL(10, 2) DEFAULT NULL,
+    start_date DATETIME NOT NULL,
+    end_date DATETIME NOT NULL,
+    status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+    created_by INT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Orders table
@@ -156,26 +183,6 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Promotions table
-CREATE TABLE IF NOT EXISTS promotions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    type ENUM('order_count', 'bill_amount') NOT NULL,
-    min_order_count INT DEFAULT NULL,
-    min_bill_amount DECIMAL(10, 2) DEFAULT NULL,
-    discount_type ENUM('percentage', 'fixed') NOT NULL,
-    discount_value DECIMAL(10, 2) NOT NULL,
-    max_discount_amount DECIMAL(10, 2) DEFAULT NULL,
-    start_date DATETIME NOT NULL,
-    end_date DATETIME NOT NULL,
-    status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
-    created_by INT,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Indexes for better performance
