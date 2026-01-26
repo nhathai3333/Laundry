@@ -7,19 +7,180 @@ import { hashPassword } from '../utils/helpers.js';
 
 dotenv.config();
 
+const DB_NAME = process.env.MYSQL_DATABASE || 'laundry66';
+
 // Create connection pool
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
   port: process.env.MYSQL_PORT || 3306,
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'laundry66',
+  database: DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
   charset: 'utf8mb4',
   multipleStatements: true
 });
+
+async function ensureUserSubscriptionColumns(connection) {
+  const requiredColumns = [
+    { name: 'subscription_package', ddl: 'ALTER TABLE users ADD COLUMN subscription_package VARCHAR(50) NULL AFTER store_id' },
+    { name: 'subscription_expires_at', ddl: 'ALTER TABLE users ADD COLUMN subscription_expires_at DATETIME NULL AFTER subscription_package' }
+  ];
+
+  for (const col of requiredColumns) {
+    const [check] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'users' AND column_name = ?
+      `,
+      [DB_NAME, col.name]
+    );
+
+    if (check?.[0]?.count > 0) continue;
+
+    try {
+      await connection.query(col.ddl);
+      console.log(`✓ Added column users.${col.name}`);
+    } catch (error) {
+      // If it was added concurrently or already exists, ignore
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+
+    // Verify it exists now (avoid silent partial init)
+    const [verify] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'users' AND column_name = ?
+      `,
+      [DB_NAME, col.name]
+    );
+    if (!verify?.[0] || verify[0].count === 0) {
+      throw new Error(`Failed to add required column users.${col.name}`);
+    }
+  }
+}
+
+async function cleanStoresForeignKeyValues(connection) {
+  // Make sure existing data won't block FK creation
+  await connection.query(`
+    UPDATE stores
+    SET admin_id = NULL
+    WHERE admin_id IS NOT NULL
+      AND admin_id NOT IN (SELECT id FROM users)
+  `);
+  await connection.query(`
+    UPDATE stores
+    SET shared_account_id = NULL
+    WHERE shared_account_id IS NOT NULL
+      AND shared_account_id NOT IN (SELECT id FROM users)
+  `);
+}
+
+async function ensureStoresForeignKeys(connection) {
+  const storeForeignKeys = [
+    { name: 'fk_stores_admin_id', column: 'admin_id' },
+    { name: 'fk_stores_shared_account_id', column: 'shared_account_id' }
+  ];
+
+  for (const fk of storeForeignKeys) {
+    const [fkCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.table_constraints
+      WHERE table_schema = ?
+        AND table_name = 'stores'
+        AND constraint_name = ?
+        AND constraint_type = 'FOREIGN KEY'
+      `,
+      [DB_NAME, fk.name]
+    );
+
+    if (fkCheck?.[0]?.count > 0) continue;
+
+    try {
+      await connection.query(
+        `
+        ALTER TABLE stores
+        ADD CONSTRAINT ${fk.name}
+        FOREIGN KEY (${fk.column}) REFERENCES users(id) ON DELETE SET NULL
+        `
+      );
+      console.log(`✓ Added foreign key ${fk.name}`);
+    } catch (error) {
+      // Retry once after cleaning invalid values (common cause)
+      try {
+        await cleanStoresForeignKeyValues(connection);
+        await connection.query(
+          `
+          ALTER TABLE stores
+          ADD CONSTRAINT ${fk.name}
+          FOREIGN KEY (${fk.column}) REFERENCES users(id) ON DELETE SET NULL
+          `
+        );
+        console.log(`✓ Added foreign key ${fk.name} (after cleanup)`);
+      } catch (retryError) {
+        // Ignore if FK already exists / partial init timing issues
+        if (
+          retryError.code !== 'ER_FK_DUP_NAME' &&
+          retryError.code !== 'ER_NO_SUCH_TABLE' &&
+          retryError.code !== 'ER_CANT_CREATE_TABLE' &&
+          retryError.code !== 'ER_DUP_KEYNAME'
+        ) {
+          console.warn(`Warning adding foreign key ${fk.name}: ${retryError.message}`);
+        }
+      }
+
+      if (
+        error.code === 'ER_FK_DUP_NAME' ||
+        error.code === 'ER_NO_SUCH_TABLE' ||
+        error.code === 'ER_CANT_CREATE_TABLE' ||
+        error.code === 'ER_DUP_KEYNAME'
+      ) {
+        continue;
+      }
+    }
+  }
+}
+
+async function ensureIndexes(connection) {
+  const indexStatements = [
+    { name: 'idx_orders_status', table: 'orders', columns: 'status' },
+    { name: 'idx_orders_assigned_to', table: 'orders', columns: 'assigned_to' },
+    { name: 'idx_orders_customer_id', table: 'orders', columns: 'customer_id' },
+    { name: 'idx_orders_created_at', table: 'orders', columns: 'created_at' },
+    { name: 'idx_timesheets_user_id', table: 'timesheets', columns: 'user_id' },
+    { name: 'idx_timesheets_check_in', table: 'timesheets', columns: 'check_in' },
+    { name: 'idx_audit_logs_user_id', table: 'audit_logs', columns: 'user_id' },
+    { name: 'idx_audit_logs_entity', table: 'audit_logs', columns: 'entity, entity_id' }
+  ];
+
+  for (const idx of indexStatements) {
+    try {
+      const [existing] = await connection.query(
+        `
+        SELECT COUNT(*) as count
+        FROM information_schema.statistics
+        WHERE table_schema = ? AND table_name = ? AND index_name = ?
+        `,
+        [DB_NAME, idx.table, idx.name]
+      );
+
+      if (existing?.[0]?.count > 0) continue;
+      await connection.query(`CREATE INDEX ${idx.name} ON ${idx.table}(${idx.columns})`);
+      console.log(`✓ Created index ${idx.name}`);
+    } catch (error) {
+      if (error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'ER_DUP_KEYNAME') {
+        console.warn(`Warning creating index ${idx.name}: ${error.message}`);
+      }
+    }
+  }
+}
 
 // Ensure schema is created before proceeding
 async function ensureSchema() {
@@ -29,7 +190,7 @@ async function ensureSchema() {
       SELECT COUNT(*) as count 
       FROM information_schema.tables 
       WHERE table_schema = ? AND table_name = 'users'
-    `, [process.env.MYSQL_DATABASE || 'laundry66']);
+    `, [DB_NAME]);
     
     if (tables[0].count === 0) {
       console.log('Creating database schema...');
@@ -101,118 +262,41 @@ async function ensureSchema() {
           FROM information_schema.tables
           WHERE table_schema = ? AND table_name = 'users'
           `,
-          [process.env.MYSQL_DATABASE || 'laundry66']
+          [DB_NAME]
         );
         if (!usersCheck?.[0] || usersCheck[0].count === 0) {
           throw new Error(
             "Schema init incomplete: table 'users' was not created. Please ensure VPS code is up-to-date and schema.sql is correct."
           );
         }
-        
-        // Wait a bit to ensure all tables are fully created
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Clean up invalid foreign key references before adding constraints
-        try {
-          await connection.query(`
-            UPDATE stores 
-            SET admin_id = NULL 
-            WHERE admin_id IS NOT NULL 
-            AND admin_id NOT IN (SELECT id FROM users)
-          `);
-          await connection.query(`
-            UPDATE stores 
-            SET shared_account_id = NULL 
-            WHERE shared_account_id IS NOT NULL 
-            AND shared_account_id NOT IN (SELECT id FROM users)
-          `);
-        } catch (error) {
-          // Ignore if tables don't exist yet or no data
-          if (error.code !== 'ER_NO_SUCH_TABLE') {
-            console.warn(`Warning cleaning stores table: ${error.message}`);
-          }
-        }
-
-        // Add required foreign keys for stores table (idempotent)
-        const storeForeignKeys = [
-          { name: 'fk_stores_admin_id', column: 'admin_id' },
-          { name: 'fk_stores_shared_account_id', column: 'shared_account_id' }
-        ];
-
-        for (const fk of storeForeignKeys) {
-          try {
-            const [fkCheck] = await connection.query(
-              `
-              SELECT COUNT(*) as count
-              FROM information_schema.table_constraints
-              WHERE table_schema = ?
-                AND table_name = 'stores'
-                AND constraint_name = ?
-                AND constraint_type = 'FOREIGN KEY'
-              `,
-              [process.env.MYSQL_DATABASE || 'laundry66', fk.name]
-            );
-
-            if (fkCheck[0].count === 0) {
-              await connection.query(
-                `
-                ALTER TABLE stores
-                ADD CONSTRAINT ${fk.name}
-                FOREIGN KEY (${fk.column}) REFERENCES users(id) ON DELETE SET NULL
-                `
-              );
-            }
-          } catch (error) {
-            // Ignore if FK already exists / table missing during partial init
-            if (
-              error.code !== 'ER_FK_DUP_NAME' &&
-              error.code !== 'ER_NO_SUCH_TABLE' &&
-              error.code !== 'ER_CANT_CREATE_TABLE' &&
-              error.code !== 'ER_DUP_KEYNAME'
-            ) {
-              console.warn(`Warning adding foreign key ${fk.name}: ${error.message}`);
-            }
-          }
-        }
-        
-        // Now create indexes separately, checking if they exist first
-        const indexStatements = [
-          { name: 'idx_orders_status', table: 'orders', columns: 'status' },
-          { name: 'idx_orders_assigned_to', table: 'orders', columns: 'assigned_to' },
-          { name: 'idx_orders_customer_id', table: 'orders', columns: 'customer_id' },
-          { name: 'idx_orders_created_at', table: 'orders', columns: 'created_at' },
-          { name: 'idx_timesheets_user_id', table: 'timesheets', columns: 'user_id' },
-          { name: 'idx_timesheets_check_in', table: 'timesheets', columns: 'check_in' },
-          { name: 'idx_audit_logs_user_id', table: 'audit_logs', columns: 'user_id' },
-          { name: 'idx_audit_logs_entity', table: 'audit_logs', columns: 'entity, entity_id' }
-        ];
-        
-        for (const idx of indexStatements) {
-          try {
-            // Check if index exists
-            const [existing] = await connection.query(`
-              SELECT COUNT(*) as count 
-              FROM information_schema.statistics 
-              WHERE table_schema = ? AND table_name = ? AND index_name = ?
-            `, [process.env.MYSQL_DATABASE || 'laundry66', idx.table, idx.name]);
-            
-            if (existing[0].count === 0) {
-              await connection.query(`CREATE INDEX ${idx.name} ON ${idx.table}(${idx.columns})`);
-            }
-          } catch (error) {
-            // Ignore if table doesn't exist yet or index creation fails
-            if (error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'ER_DUP_KEYNAME') {
-              console.warn(`Warning creating index ${idx.name}: ${error.message}`);
-            }
-          }
-        }
-        
         console.log('Schema created successfully');
       } finally {
         connection.release();
       }
     } else {
       console.log('Schema already exists');
+    }
+
+    // Always ensure runtime-required schema bits exist (even if DB already existed)
+    const connection = await pool.getConnection();
+    try {
+      // Wait a bit to avoid race conditions after CREATE TABLE on fresh init
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      await ensureUserSubscriptionColumns(connection);
+
+      try {
+        await cleanStoresForeignKeyValues(connection);
+      } catch (error) {
+        if (error.code !== 'ER_NO_SUCH_TABLE') {
+          console.warn(`Warning cleaning stores table: ${error.message}`);
+        }
+      }
+
+      await ensureStoresForeignKeys(connection);
+      await ensureIndexes(connection);
+    } finally {
+      connection.release();
     }
   } catch (error) {
     console.error('Error ensuring schema:', error);

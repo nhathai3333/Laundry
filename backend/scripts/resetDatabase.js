@@ -22,6 +22,33 @@ const tempPool = mysql.createPool({
 
 const dbName = process.env.MYSQL_DATABASE || 'laundry66';
 
+async function ensureUserSubscriptionColumns(connection) {
+  const requiredColumns = [
+    { name: 'subscription_package', ddl: 'ALTER TABLE users ADD COLUMN subscription_package VARCHAR(50) NULL AFTER store_id' },
+    { name: 'subscription_expires_at', ddl: 'ALTER TABLE users ADD COLUMN subscription_expires_at DATETIME NULL AFTER subscription_package' }
+  ];
+
+  for (const col of requiredColumns) {
+    const [check] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'users' AND column_name = ?
+      `,
+      [dbName, col.name]
+    );
+
+    if (check?.[0]?.count > 0) continue;
+
+    try {
+      await connection.query(col.ddl);
+      console.log(`✓ Added column users.${col.name}`);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
+}
+
 async function resetDatabase() {
   const connection = await tempPool.getConnection();
   try {
@@ -98,6 +125,9 @@ async function resetDatabase() {
           throw error;
         }
       }
+
+      // Ensure required columns exist even if schema.sql is outdated on VPS
+      await ensureUserSubscriptionColumns(dbConnection);
 
       // Create indexes
       console.log('Creating indexes...');
