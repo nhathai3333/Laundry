@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS users (
     hourly_rate DECIMAL(10, 2),
     shift_rate DECIMAL(10, 2),
     store_id INT,
+    subscription_package VARCHAR(50),
+    subscription_expires_at DATETIME,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL

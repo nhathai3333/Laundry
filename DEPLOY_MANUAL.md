@@ -108,7 +108,7 @@ PORT=5000
 NODE_ENV=production
 
 # JWT Configuration
-JWT_SECRET=nano .env
+JWT_SECRET=Nq6aFIR3++40BPvY01XAtIcxZDAX3aHipWk5OzBI6qU=
 JWT_EXPIRE=7d
 
 # MySQL Database
@@ -119,9 +119,10 @@ MYSQL_PASSWORD=sa2008
 MYSQL_DATABASE=laundry66
 
 # Frontend URL
-FRONTEND_URL=http://103.130.212.155:3000
-# Hoặc nếu có domain:
-# FRONTEND_URL=https://quanlycuahangabc.id.vn
+# Nếu đã map domain:
+FRONTEND_URL=http://quanlycuahangabc.id.vn
+# Hoặc nếu chưa có domain, dùng IP:
+# FRONTEND_URL=http://103.130.212.155
 ```
 
 **Tạo JWT_SECRET mạnh:**
@@ -297,7 +298,7 @@ sudo chown -R $USER:$USER /var/www/laundry-frontend
 
 ```bash
 # Từ thư mục frontend trên máy local
-scp -r dist/* root@your-server-ip:/var/www/laundry-frontend/
+scp -r dist/* root@103.130.212.155:/var/www/laundry-frontend/
 ```
 
 **Nhập password khi được yêu cầu.**
@@ -343,9 +344,9 @@ sudo nano /etc/nginx/conf.d/laundry-frontend.conf
 ```nginx
 server {
     listen 80;
-    server_name yourdomain.com www.yourdomain.com;
+    server_name quanlycuahangabc.id.vn www.quanlycuahangabc.id.vn;
     # Hoặc nếu chưa có domain, dùng IP:
-    # server_name your-server-ip;
+    # server_name 103.130.212.155;
 
     root /var/www/laundry-frontend;
     index index.html;
@@ -383,8 +384,9 @@ server {
 }
 ```
 
-**Sửa:**
-- `server_name`: Thay bằng domain của bạn hoặc IP VPS
+**Lưu ý:**
+- `server_name` đã được cấu hình cho domain `quanlycuahangabc.id.vn`
+- Nếu chưa map domain, có thể tạm thời dùng IP `103.130.212.155` (uncomment dòng 348)
 - Các phần khác thường không cần sửa
 
 **Lưu file:** `Ctrl + X`, `Y`, `Enter`
