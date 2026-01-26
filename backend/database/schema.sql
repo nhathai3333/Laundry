@@ -28,15 +28,6 @@ CREATE TABLE IF NOT EXISTS users (
     FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Add foreign keys to stores table after users table is created
-ALTER TABLE stores 
-ADD CONSTRAINT fk_stores_admin_id 
-FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL;
-
-ALTER TABLE stores 
-ADD CONSTRAINT fk_stores_shared_account_id 
-FOREIGN KEY (shared_account_id) REFERENCES users(id) ON DELETE SET NULL;
-
 -- Employees table
 CREATE TABLE IF NOT EXISTS employees (
     id INT AUTO_INCREMENT PRIMARY KEY,

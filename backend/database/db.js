@@ -153,13 +153,19 @@ async function initializeDatabase() {
   }
 }
 
-// Initialize on module load
-initializeDatabase().catch(err => {
-  console.error('❌ Failed to initialize database:', err.message);
-  console.error('💡 Make sure MySQL is running and credentials are correct');
-  console.error('💡 Check your .env file or environment variables');
-  // Don't exit - let server start and show error on first request
-});
+// Auto-init DB in development; require explicit opt-in in production.
+// This prevents races when running `npm run init-db` on a VPS.
+const shouldAutoInit =
+  process.env.DB_AUTO_INIT === 'true' || process.env.NODE_ENV !== 'production';
+
+if (shouldAutoInit) {
+  initializeDatabase().catch(err => {
+    console.error('❌ Failed to initialize database:', err.message);
+    console.error('💡 Make sure MySQL is running and credentials are correct');
+    console.error('💡 Check your .env file or environment variables');
+    // Don't exit - let server start and show error on first request
+  });
+}
 
 // Helper function to prepare and execute queries
 export const query = async (sql, params = []) => {
