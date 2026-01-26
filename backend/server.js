@@ -38,12 +38,37 @@ app.use(helmet({
 }));
 
 // Middleware - CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+};
+
+// In development, allow all localhost origins
+if (process.env.NODE_ENV === 'production') {
+  // Production: only allow specific FRONTEND_URL
+  corsOptions.origin = process.env.FRONTEND_URL || 'http://localhost:3000';
+} else {
+  // Development: allow all localhost origins
+  corsOptions.origin = (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow all localhost and 127.0.0.1 origins in development
+    if (origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)) {
+      return callback(null, true);
+    }
+    
+    // Also allow FRONTEND_URL if specified
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+      return callback(null, true);
+    }
+    
+    callback(null, true); // Allow all in development
+  };
+}
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
