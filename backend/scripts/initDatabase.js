@@ -112,6 +112,27 @@ async function ensureSchema() {
         // Wait a bit to ensure all tables are fully created
         await new Promise(resolve => setTimeout(resolve, 500));
 
+        // Clean up invalid foreign key references before adding constraints
+        try {
+          await connection.query(`
+            UPDATE stores 
+            SET admin_id = NULL 
+            WHERE admin_id IS NOT NULL 
+            AND admin_id NOT IN (SELECT id FROM users)
+          `);
+          await connection.query(`
+            UPDATE stores 
+            SET shared_account_id = NULL 
+            WHERE shared_account_id IS NOT NULL 
+            AND shared_account_id NOT IN (SELECT id FROM users)
+          `);
+        } catch (error) {
+          // Ignore if tables don't exist yet or no data
+          if (error.code !== 'ER_NO_SUCH_TABLE') {
+            console.warn(`Warning cleaning stores table: ${error.message}`);
+          }
+        }
+
         // Add required foreign keys for stores table (idempotent)
         const storeForeignKeys = [
           { name: 'fk_stores_admin_id', column: 'admin_id' },

@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "init-db": "node scripts/initDatabase.js",
+    "reset-db": "node scripts/resetDatabase.js --confirm",
     "create-root-admin": "node scripts/create_root_admin.js"
   },
   "keywords": [

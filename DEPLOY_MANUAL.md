@@ -182,6 +182,18 @@ Nếu thành công, sẽ thấy thông báo:
 ✅ Database initialized successfully
 ```
 
+**Lưu ý:** Nếu muốn **reset lại database hoàn toàn** (xóa tất cả dữ liệu và tạo lại từ đầu):
+
+```bash
+cd /var/www/laundry-backend
+npm run reset-db
+```
+
+⚠️ **CẢNH BÁO:** Lệnh này sẽ **XÓA TẤT CẢ DỮ LIỆU** trong database và tạo lại từ đầu. Chỉ dùng khi:
+- Muốn bắt đầu lại từ đầu
+- Đang trong môi trường development/test
+- Đã backup dữ liệu quan trọng
+
 ### Bước 9: Tạo root admin (tùy chọn)
 
 ```bash
@@ -475,7 +487,22 @@ git pull origin main
 npm install --production
 ```
 
-**Bước 3: Restart PM2**
+**Bước 3: Chạy database migration (nếu có thay đổi schema)**
+
+Nếu có thay đổi về cấu trúc database (thêm cột, bảng mới), cần chạy migration:
+
+```bash
+# Chạy migration script cụ thể (ví dụ: thêm cột subscription)
+cd /var/www/laundry-backend
+node scripts/add_subscription_columns.js
+```
+
+Hoặc nếu có migration script khác:
+```bash
+node scripts/your_migration_script.js
+```
+
+**Bước 4: Restart PM2**
 
 ```bash
 pm2 restart laundry-backend
