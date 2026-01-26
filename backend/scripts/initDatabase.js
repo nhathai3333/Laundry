@@ -66,37 +66,47 @@ async function ensureSchema() {
       const connection = await pool.getConnection();
       try {
         // Split schema into individual statements and execute them one by one.
-        // IMPORTANT: our schema includes many leading `--` comment lines; if we keep them,
-        // splitting by `;` will produce chunks that *start* with `--` and would be skipped.
-        // So we remove comment-only lines first.
-        const schemaWithoutCommentLines = processedSchema
-          .split('\n')
-          .filter((line) => !line.trim().startsWith('--'))
-          .join('\n');
+        // Use a robust comment stripper: remove all `-- ...` comment fragments first,
+        // otherwise statement chunks may start with comments and get mishandled.
+        const schemaWithoutLineComments = processedSchema
+          .replace(/^\s*--.*$/gm, '')
+          .trim();
 
-        const statements = schemaWithoutCommentLines
+        const statements = schemaWithoutLineComments
           .split(';')
           .map((s) => s.trim())
           .filter((s) => s.length > 0);
-        
-        // Execute CREATE TABLE statements one by one
+
+        // Execute all CREATE TABLE statements one by one (ignore "already exists")
         for (const statement of statements) {
-          if (statement && /^\s*CREATE\s+TABLE/i.test(statement)) {
-            try {
-              await connection.query(statement + ';');
-            } catch (error) {
-              // Ignore table already exists errors
-              if (error.code !== 'ER_TABLE_EXISTS_ERROR' && 
-                  error.code !== 'ER_DUP_TABLE' &&
-                  !error.message.includes('already exists') &&
-                  error.code !== 'ER_DUP_ENTRY') {
-                // Only throw if it's not a "table exists" error
-                if (!error.message.includes('Table') || !error.message.includes('already exists')) {
-                  throw error;
-                }
-              }
+          if (!/^\s*CREATE\s+TABLE/i.test(statement)) continue;
+          try {
+            await connection.query(statement + ';');
+          } catch (error) {
+            // Ignore table already exists errors
+            if (
+              error.code !== 'ER_TABLE_EXISTS_ERROR' &&
+              error.code !== 'ER_DUP_TABLE' &&
+              !error.message.includes('already exists')
+            ) {
+              throw error;
             }
           }
+        }
+
+        // Sanity check: users table must exist now
+        const [usersCheck] = await connection.query(
+          `
+          SELECT COUNT(*) as count
+          FROM information_schema.tables
+          WHERE table_schema = ? AND table_name = 'users'
+          `,
+          [process.env.MYSQL_DATABASE || 'laundry66']
+        );
+        if (!usersCheck?.[0] || usersCheck[0].count === 0) {
+          throw new Error(
+            "Schema init incomplete: table 'users' was not created. Please ensure VPS code is up-to-date and schema.sql is correct."
+          );
         }
         
         // Wait a bit to ensure all tables are fully created
