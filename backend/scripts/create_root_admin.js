@@ -49,5 +49,5 @@ async function createRootAdmin() {
     process.exit(1);
   }
 }
-f
+
 createRootAdmin();
