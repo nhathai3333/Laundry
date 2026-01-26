@@ -65,16 +65,23 @@ async function ensureSchema() {
       
       const connection = await pool.getConnection();
       try {
-        // Split schema into individual statements and execute them one by one
-        // This ensures proper order of table creation
-        const statements = processedSchema
+        // Split schema into individual statements and execute them one by one.
+        // IMPORTANT: our schema includes many leading `--` comment lines; if we keep them,
+        // splitting by `;` will produce chunks that *start* with `--` and would be skipped.
+        // So we remove comment-only lines first.
+        const schemaWithoutCommentLines = processedSchema
+          .split('\n')
+          .filter((line) => !line.trim().startsWith('--'))
+          .join('\n');
+
+        const statements = schemaWithoutCommentLines
           .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0 && !s.startsWith('--'));
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
         
         // Execute CREATE TABLE statements one by one
         for (const statement of statements) {
-          if (statement && statement.toUpperCase().includes('CREATE TABLE')) {
+          if (statement && /^\s*CREATE\s+TABLE/i.test(statement)) {
             try {
               await connection.query(statement + ';');
             } catch (error) {

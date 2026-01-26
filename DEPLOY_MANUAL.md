@@ -108,7 +108,7 @@ PORT=5000
 NODE_ENV=production
 
 # JWT Configuration
-JWT_SECRET=your_super_secret_jwt_key_min_32_characters_long_change_this
+JWT_SECRET=nano .env
 JWT_EXPIRE=7d
 
 # MySQL Database
