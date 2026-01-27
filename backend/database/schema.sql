@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS orders (
     discount_amount DECIMAL(10, 2) DEFAULT 0,
     final_amount DECIMAL(10, 2) DEFAULT 0,
     promotion_id INT,
+    store_id INT,
+    payment_method ENUM('cash', 'transfer') DEFAULT NULL,
     created_by INT NOT NULL,
     updated_by INT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -111,6 +113,7 @@ CREATE TABLE IF NOT EXISTS orders (
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
     FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE SET NULL,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

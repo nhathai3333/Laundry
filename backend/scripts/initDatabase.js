@@ -148,6 +148,99 @@ async function ensureStoresForeignKeys(connection) {
   }
 }
 
+async function ensureOrdersColumns(connection) {
+  try {
+    // First check if orders table exists
+    const [ordersTableCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = ? AND table_name = 'orders'
+      `,
+      [DB_NAME]
+    );
+
+    if (!ordersTableCheck?.[0] || ordersTableCheck[0].count === 0) {
+      console.log('Orders table does not exist yet, skipping column check');
+      return;
+    }
+
+    const requiredColumns = [
+      { 
+        name: 'store_id', 
+        ddl: 'ALTER TABLE orders ADD COLUMN store_id INT NULL AFTER promotion_id',
+        fk: {
+          name: 'fk_orders_store_id',
+          constraint: 'ALTER TABLE orders ADD CONSTRAINT fk_orders_store_id FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL'
+        }
+      },
+      { 
+        name: 'payment_method', 
+        ddl: "ALTER TABLE orders ADD COLUMN payment_method ENUM('cash', 'transfer') DEFAULT NULL AFTER store_id"
+      }
+    ];
+
+    for (const col of requiredColumns) {
+      try {
+        const [check] = await connection.query(
+          `
+          SELECT COUNT(*) as count
+          FROM information_schema.columns
+          WHERE table_schema = ? AND table_name = 'orders' AND column_name = ?
+          `,
+          [DB_NAME, col.name]
+        );
+
+        if (check?.[0]?.count > 0) {
+          console.log(`✓ Column orders.${col.name} already exists`);
+          continue;
+        }
+
+        // Add column
+        await connection.query(col.ddl);
+        console.log(`✓ Added column orders.${col.name}`);
+        
+        // Add foreign key if specified
+        if (col.fk) {
+          try {
+            const [fkCheck] = await connection.query(
+              `
+              SELECT COUNT(*) as count
+              FROM information_schema.table_constraints
+              WHERE table_schema = ? AND table_name = 'orders' AND constraint_name = ?
+              `,
+              [DB_NAME, col.fk.name]
+            );
+            
+            if (fkCheck?.[0]?.count === 0) {
+              await connection.query(col.fk.constraint);
+              console.log(`✓ Added foreign key ${col.fk.name}`);
+            } else {
+              console.log(`✓ Foreign key ${col.fk.name} already exists`);
+            }
+          } catch (fkError) {
+            if (fkError.code === 'ER_FK_DUP_NAME' || fkError.code === 'ER_DUP_KEYNAME') {
+              console.log(`✓ Foreign key ${col.fk.name} already exists`);
+            } else {
+              console.warn(`Warning adding foreign key ${col.fk.name}: ${fkError.message}`);
+            }
+          }
+        }
+      } catch (error) {
+        if (error.code === 'ER_DUP_FIELDNAME') {
+          console.log(`✓ Column orders.${col.name} already exists`);
+        } else {
+          console.error(`Error adding column orders.${col.name}:`, error.message);
+          // Don't throw - continue with other columns
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in ensureOrdersColumns:', error.message);
+    // Don't throw - allow init to continue
+  }
+}
+
 async function ensureIndexes(connection) {
   const indexStatements = [
     { name: 'idx_orders_status', table: 'orders', columns: 'status' },
@@ -337,6 +430,10 @@ async function ensureSchema() {
       }
 
       await ensureStoresForeignKeys(connection);
+      
+      // Ensure orders table has store_id and payment_method columns
+      await ensureOrdersColumns(connection);
+      
       await ensureIndexes(connection);
     } finally {
       connection.release();
