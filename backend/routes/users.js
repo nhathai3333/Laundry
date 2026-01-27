@@ -28,6 +28,7 @@ router.get('/', authorize('admin'), async (req, res) => {
         `);
       } else if (req.user.role === 'admin' && req.user.role !== 'root') {
         // Admin can only see users from stores in their chain (stores with admin_id = user.id)
+        // Exclude admin/root users - only show employer users (tài khoản tiệm)
         users = await query(`
           SELECT u.id, u.name, u.phone, u.role, u.status, u.started_at, u.hourly_rate, u.shift_rate, 
                  u.created_at, u.updated_at, u.store_id, s.name as store_name,
@@ -35,6 +36,7 @@ router.get('/', authorize('admin'), async (req, res) => {
           FROM users u
           LEFT JOIN stores s ON u.store_id = s.id
           WHERE s.admin_id = ?
+            AND u.role = 'employer'
           ORDER BY u.created_at DESC
         `, [req.user.id]);
       } else {

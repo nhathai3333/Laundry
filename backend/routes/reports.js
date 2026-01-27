@@ -425,10 +425,12 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
           COUNT(*) as shift_count
         FROM timesheets t
         JOIN stores s ON t.store_id = s.id
+        LEFT JOIN users u ON t.user_id = u.id
         WHERE DATE_FORMAT(t.check_in, '%m') = ? 
           AND DATE_FORMAT(t.check_in, '%Y') = ?
           AND t.check_out IS NOT NULL
           AND t.revenue_amount > 0
+          AND (u.role IS NULL OR u.role = 'employer')
       `;
       const params = [monthStr, monthYearValidation.year];
       
@@ -452,10 +454,12 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
           COUNT(DISTINCT t.user_id) as employee_count,
           COUNT(*) as shift_count
         FROM timesheets t
+        LEFT JOIN users u ON t.user_id = u.id
         WHERE DATE_FORMAT(t.check_in, '%m') = ? 
           AND DATE_FORMAT(t.check_in, '%Y') = ?
           AND t.check_out IS NOT NULL
           AND t.revenue_amount > 0
+          AND (u.role IS NULL OR u.role = 'employer')
       `;
       const params = [monthStr, monthYearValidation.year];
       
