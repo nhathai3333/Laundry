@@ -140,7 +140,7 @@ Copy kết quả và paste vào `JWT_SECRET` trong file `.env`.
 
 ```bash
 # Đăng nhập MySQL
-sudo mysql -u root -p
+    sudo mysql -u root -p
 # Nhập password root MySQL
 ```
 
@@ -196,15 +196,72 @@ npm run reset-db
 
 ### Bước 9: Tạo root admin (tùy chọn)
 
+**Cách 1: Sử dụng script tự động (Khuyến nghị)**
+
 ```bash
 cd /var/www/laundry-backend
 npm run create-root-admin
 ```
 
+Thông tin đăng nhập mặc định:
+- Phone: `admin`
+- Password: `admin123`
+- Name: `Root Admin`
+
+**Cách 2: Tạo thủ công bằng MySQL**
+
+**Bước 2.1: Generate password hash**
+
+```bash
+cd /var/www/laundry-backend
+npm run generate-root-admin-sql
+```
+
 Nhập thông tin khi được yêu cầu:
 - Phone: `admin` (hoặc số điện thoại)
-- Password: (mật khẩu mạnh)
-- Name: `Admin`
+- Password: `admin123` (hoặc mật khẩu bạn muốn)
+- Name: `Root Admin` (hoặc tên bạn muốn)
+
+Script sẽ output SQL statement để chạy trong MySQL.
+
+**Bước 2.2: Kết nối MySQL và chạy SQL**
+
+```bash
+# Kết nối MySQL
+mysql -u root -p laundry66
+# Hoặc với user từ .env:
+# mysql -u laundry_user -p laundry66
+```
+
+**Bước 2.3: Chạy SQL trong MySQL console**
+
+```sql
+-- Kiểm tra root admin đã tồn tại chưa
+SELECT id, name, phone, role, status 
+FROM users 
+WHERE role = 'root' OR phone = 'admin';
+
+-- Xóa root admin cũ (nếu có) - CHỈ CHẠY NẾU MUỐN XÓA
+-- DELETE FROM users WHERE role = 'root' OR phone = 'admin';
+
+-- Tạo root admin mới (copy SQL từ script generate-root-admin-sql)
+-- Ví dụ với password "admin123":
+INSERT INTO users (name, phone, password_hash, role, status) 
+VALUES (
+  'Root Admin', 
+  'admin', 
+  '$2a$10$...',  -- Copy hash từ script generate-root-admin-sql
+  'root', 
+  'active'
+);
+
+-- Kiểm tra đã tạo thành công
+SELECT id, name, phone, role, status 
+FROM users 
+WHERE role = 'root';
+```
+
+**Lưu ý:** Hash password phải được generate bằng script `generate-root-admin-sql` vì bcrypt hash không thể tạo trực tiếp trong MySQL.
 
 ### Bước 10: Khởi động Backend với PM2
 
@@ -235,7 +292,13 @@ pm2 logs laundry-backend
 # Test API
 curl http://localhost:5000/api/health
 ```
+    sudo mysql -u root -p
 DROP DATABASE IF EXISTS laundry66;
+INSERT INTO users (name, phone, password_hash, role, status) 
+VALUES ('Root Admin', 'root', '123456', 'root', 'active');
+
+-- Kiểm tra
+SELECT id, name, phone, role, status FROM users WHERE role = 'root';
 
 Nếu thấy response JSON với `status: 'ok'` là thành công!
 

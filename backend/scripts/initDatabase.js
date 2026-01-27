@@ -269,6 +269,49 @@ async function ensureSchema() {
             "Schema init incomplete: table 'users' was not created. Please ensure VPS code is up-to-date and schema.sql is correct."
           );
         }
+        
+        // Ensure promotions table exists (it has FK to users, so must be created after users)
+        const [promotionsCheck] = await connection.query(
+          `
+          SELECT COUNT(*) as count
+          FROM information_schema.tables
+          WHERE table_schema = ? AND table_name = 'promotions'
+          `,
+          [DB_NAME]
+        );
+        if (!promotionsCheck?.[0] || promotionsCheck[0].count === 0) {
+          console.log('Creating promotions table...');
+          try {
+            await connection.query(`
+              CREATE TABLE IF NOT EXISTS promotions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                type ENUM('order_count', 'bill_amount') NOT NULL,
+                min_order_count INT DEFAULT NULL,
+                min_bill_amount DECIMAL(10, 2) DEFAULT NULL,
+                discount_type ENUM('percentage', 'fixed') NOT NULL,
+                discount_value DECIMAL(10, 2) NOT NULL,
+                max_discount_amount DECIMAL(10, 2) DEFAULT NULL,
+                start_date DATETIME NOT NULL,
+                end_date DATETIME NOT NULL,
+                status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+                created_by INT,
+                store_id INT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            console.log('✓ Promotions table created');
+          } catch (error) {
+            if (error.code !== 'ER_TABLE_EXISTS_ERROR' && error.code !== 'ER_DUP_TABLE') {
+              console.warn(`Warning creating promotions table: ${error.message}`);
+            }
+          }
+        }
+        
         console.log('Schema created successfully');
       } finally {
         connection.release();

@@ -9,7 +9,8 @@
     "dev": "nodemon server.js",
     "init-db": "node scripts/initDatabase.js",
     "reset-db": "node scripts/resetDatabase.js --confirm",
-    "create-root-admin": "node scripts/create_root_admin.js"
+    "create-root-admin": "node scripts/create_root_admin.js",
+    "migrate-promotions": "node scripts/add_store_id_to_promotions.js"
   },
   "keywords": [
     "laundry",
