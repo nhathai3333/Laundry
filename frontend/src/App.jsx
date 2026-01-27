@@ -40,7 +40,24 @@ const RootAdminRoute = ({ children }) => {
   }
   // Nếu là root admin và đang cố truy cập page không được phép, redirect về dashboard
   if (isRoot() && location.pathname !== '/admin' && location.pathname !== '/admin/admin-management') {
-    return <Navigate to="/admin" />;
+    return <Navigate to="/admin" replace />;
+  }
+  return children;
+};
+
+// Route protection cho admin thường - root admin không được truy cập
+const AdminOnlyRoute = ({ children }) => {
+  const location = useLocation();
+  
+  if (!isAuthenticated()) {
+    return <Navigate to="/login" />;
+  }
+  if (!isAdmin()) {
+    return <Navigate to="/" />;
+  }
+  // Root admin không được truy cập các trang admin thường
+  if (isRoot()) {
+    return <Navigate to="/admin" replace />;
   }
   return children;
 };
@@ -59,17 +76,17 @@ function App() {
             </PrivateRoute>
           }
         >
-          <Route index element={<Dashboard />} />
+          <Route index element={<RootAdminRoute><Dashboard /></RootAdminRoute>} />
           <Route path="admin-management" element={<RootAdminRoute><AdminManagement /></RootAdminRoute>} />
           {/* Các route chỉ dành cho admin thường, root admin sẽ bị redirect */}
-          <Route path="users" element={<RootAdminRoute><Users /></RootAdminRoute>} />
-          <Route path="products" element={<RootAdminRoute><Products /></RootAdminRoute>} />
-          <Route path="customers" element={<RootAdminRoute><Customers /></RootAdminRoute>} />
-          <Route path="timesheets" element={<RootAdminRoute><Timesheets /></RootAdminRoute>} />
-          <Route path="reports" element={<RootAdminRoute><Reports /></RootAdminRoute>} />
-          <Route path="settings" element={<RootAdminRoute><Settings /></RootAdminRoute>} />
-          <Route path="stores" element={<RootAdminRoute><Stores /></RootAdminRoute>} />
-          <Route path="promotions" element={<RootAdminRoute><Promotions /></RootAdminRoute>} />
+          <Route path="users" element={<AdminOnlyRoute><Users /></AdminOnlyRoute>} />
+          <Route path="products" element={<AdminOnlyRoute><Products /></AdminOnlyRoute>} />
+          <Route path="customers" element={<AdminOnlyRoute><Customers /></AdminOnlyRoute>} />
+          <Route path="timesheets" element={<AdminOnlyRoute><Timesheets /></AdminOnlyRoute>} />
+          <Route path="reports" element={<AdminOnlyRoute><Reports /></AdminOnlyRoute>} />
+          <Route path="settings" element={<AdminOnlyRoute><Settings /></AdminOnlyRoute>} />
+          <Route path="stores" element={<AdminOnlyRoute><Stores /></AdminOnlyRoute>} />
+          <Route path="promotions" element={<AdminOnlyRoute><Promotions /></AdminOnlyRoute>} />
         </Route>
 
         <Route

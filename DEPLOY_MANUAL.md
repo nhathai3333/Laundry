@@ -10,7 +10,8 @@ Hướng dẫn chi tiết từng bước để deploy Backend và Frontend Laund
 2. [Deploy Backend](#2-deploy-backend)
 3. [Deploy Frontend](#3-deploy-frontend)
 4. [Cấu hình Nginx](#4-cấu-hình-nginx)
-5. [Kiểm tra](#5-kiểm-tra)
+5. [Thiết lập HTTPS (SSL/TLS)](#41-thiết-lập-https-ssltls-với-lets-encrypt)
+6. [Kiểm tra](#5-kiểm-tra)
 
 ---
 
@@ -294,8 +295,7 @@ curl http://localhost:5000/api/health
 ```
     sudo mysql -u root -p
 DROP DATABASE IF EXISTS laundry66;
-INSERT INTO users (name, phone, password_hash, role, status) 
-VALUES ('Root Admin', 'root', '123456', 'root', 'active');
+INSERT INTO users (name, phone, password_hash, role, status) VALUES ('Root Admin', 'root', '123456', 'root', 'active');
 
 -- Kiểm tra
 SELECT id, name, phone, role, status FROM users WHERE role = 'root';
@@ -489,6 +489,294 @@ sudo systemctl status nginx
 
 ---
 
+## 4.1. THIẾT LẬP HTTPS (SSL/TLS) VỚI LET'S ENCRYPT
+
+### Yêu cầu:
+- ✅ Domain đã được trỏ về IP VPS (A record) - chỉ 1 IP duy nhất
+- ✅ Nginx đã được cấu hình và chạy trên port 80
+- ✅ Firewall đã mở port 80 và 443
+
+### Bước 1: Cài đặt Certbot
+
+**Trên CentOS/RHEL:**
+```bash
+# Cài đặt EPEL repository (nếu chưa có)
+sudo yum install -y epel-release
+
+# Cài đặt Certbot
+sudo yum install -y certbot python3-certbot-nginx
+```
+
+**Trên Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install -y certbot python3-certbot-nginx
+```
+
+### Bước 2: Đảm bảo Firewall mở port 80 và 443
+
+**CentOS/RHEL (firewalld):**
+```bash
+# Kiểm tra firewall
+sudo firewall-cmd --list-all
+
+# Mở port 80 và 443 nếu chưa mở
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+**Ubuntu/Debian (ufw):**
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw reload
+```
+
+### Bước 3: Kiểm tra Domain và Nginx trước khi lấy Certificate
+
+**Kiểm tra domain trỏ về đúng IP VPS:**
+```bash
+# Kiểm tra IP của domain
+dig +short quanlycuahangabc.id.vn
+# hoặc
+nslookup quanlycuahangabc.id.vn
+
+# Phải trả về IP của VPS (ví dụ: 103.130.212.155)
+# Nếu có nhiều IP hoặc IP sai, cần cập nhật A record trong DNS
+```
+
+**Kiểm tra Nginx có thể truy cập từ internet:**
+```bash
+# Test từ VPS
+curl -I http://quanlycuahangabc.id.vn
+
+# Test từ máy local (phải thấy HTTP 200 hoặc 301)
+curl -I http://quanlycuahangabc.id.vn
+```
+
+**Cập nhật cấu hình Nginx để hỗ trợ Let's Encrypt:**
+
+```bash
+sudo nano /etc/nginx/conf.d/laundry-frontend.conf
+```
+
+**Thêm location block cho `/.well-known/` TRƯỚC location `/`:**
+
+```nginx
+server {
+    listen 80;
+    server_name quanlycuahangabc.id.vn www.quanlycuahangabc.id.vn;
+
+    root /var/www/laundry-frontend;
+    index index.html;
+
+    # Allow Let's Encrypt verification (MUST be before location /)
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+        try_files $uri =404;
+    }
+
+    # Serve static files
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Proxy API requests to backend
+    location /api {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+**Tạo thư mục nếu chưa có:**
+```bash
+sudo mkdir -p /var/www/html/.well-known/acme-challenge
+sudo chown -R nginx:nginx /var/www/html
+sudo chmod -R 755 /var/www/html
+```
+
+**Kiểm tra và restart:**
+```bash
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Bước 4: Lấy SSL Certificate
+
+**Cách 1: Sử dụng Standalone mode (Khuyến nghị - nếu gặp lỗi với Nginx plugin)**
+
+```bash
+# Tạm thời dừng Nginx
+sudo systemctl stop nginx
+
+# Chạy Certbot ở standalone mode
+sudo certbot certonly --standalone -d quanlycuahangabc.id.vn -d www.quanlycuahangabc.id.vn
+
+# Khởi động lại Nginx
+sudo systemctl start nginx
+```
+
+**Cách 2: Sử dụng Nginx plugin (Nếu Nginx đã cấu hình đúng)**
+
+```bash
+sudo certbot --nginx -d quanlycuahangabc.id.vn -d www.quanlycuahangabc.id.vn
+```
+
+**Quá trình sẽ hỏi:**
+1. **Email address**: Nhập email để nhận thông báo về certificate
+2. **Agree to Terms**: Nhập `A` để đồng ý
+3. **Share email**: Nhập `Y` hoặc `N` (tùy chọn)
+4. **Redirect HTTP to HTTPS**: Nhập `2` để tự động redirect HTTP → HTTPS (nếu dùng Nginx plugin)
+
+### Bước 5: Cấu hình Nginx với SSL (Nếu dùng Standalone mode)
+
+Nếu bạn đã lấy certificate bằng standalone mode, cần cấu hình Nginx thủ công:
+
+```bash
+sudo nano /etc/nginx/conf.d/laundry-frontend.conf
+```
+
+**Cập nhật cấu hình:**
+
+```nginx
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    server_name quanlycuahangabc.id.vn www.quanlycuahangabc.id.vn;
+    return 301 https://$server_name$request_uri;
+}
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    server_name quanlycuahangabc.id.vn www.quanlycuahangabc.id.vn;
+
+    # SSL certificates
+    ssl_certificate /etc/letsencrypt/live/quanlycuahangabc.id.vn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/quanlycuahangabc.id.vn/privkey.pem;
+    
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    root /var/www/laundry-frontend;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript 
+               application/x-javascript application/xml+rss application/json;
+
+    # Serve static files
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Proxy API requests to backend
+    location /api {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+**Kiểm tra và restart:**
+```bash
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Bước 6: Kiểm tra HTTPS hoạt động
+
+**Mở trình duyệt:**
+- Truy cập: `https://quanlycuahangabc.id.vn`
+- Phải thấy 🔒 (lock icon) ở thanh địa chỉ
+- HTTP sẽ tự động redirect sang HTTPS
+
+**Test bằng curl:**
+```bash
+# Test HTTPS
+curl -I https://quanlycuahangabc.id.vn
+
+# Test redirect HTTP → HTTPS
+curl -I http://quanlycuahangabc.id.vn
+# Phải thấy: HTTP/1.1 301 Moved Permanently
+```
+
+### Bước 7: Cập nhật Backend .env để hỗ trợ HTTPS
+
+**Cập nhật file .env:**
+```bash
+nano /var/www/laundry-backend/.env
+```
+
+**Cập nhật `FRONTEND_URL`:**
+```env
+FRONTEND_URL=https://quanlycuahangabc.id.vn
+```
+
+**Restart backend:**
+```bash
+pm2 restart laundry-backend
+```
+
+### Bước 8: Thiết lập tự động gia hạn Certificate
+
+Let's Encrypt certificate có thời hạn 90 ngày. Certbot tự động cài đặt cron job để gia hạn, nhưng nên kiểm tra:
+
+```bash
+# Kiểm tra cron job
+sudo systemctl status certbot.timer
+
+# Hoặc kiểm tra thủ công
+sudo certbot renew --dry-run
+```
+
+**Nếu chưa có auto-renew, thêm vào crontab:**
+```bash
+sudo crontab -e
+```
+
+**Thêm dòng:**
+```
+0 0,12 * * * certbot renew --quiet
+```
+
+---
+
 ## 5. KIỂM TRA
 
 ### Bước 1: Kiểm tra Backend
@@ -640,6 +928,69 @@ pm2 restart laundry-backend
 ### 404 Not Found khi truy cập route
 
 Kiểm tra cấu hình Nginx có `try_files $uri $uri/ /index.html;` chưa.
+
+### Lỗi HTTPS không hoạt động
+
+**Kiểm tra các vấn đề sau:**
+
+1. **Kiểm tra certificate đã được tạo:**
+```bash
+sudo ls -la /etc/letsencrypt/live/quanlycuahangabc.id.vn/
+# Phải thấy: fullchain.pem và privkey.pem
+```
+
+2. **Kiểm tra cấu hình Nginx có SSL:**
+```bash
+sudo cat /etc/nginx/conf.d/laundry-frontend.conf
+# Phải thấy: listen 443 ssl và ssl_certificate
+```
+
+3. **Kiểm tra Nginx có lỗi:**
+```bash
+sudo nginx -t
+sudo tail -f /var/log/nginx/error.log
+```
+
+4. **Kiểm tra firewall:**
+```bash
+sudo firewall-cmd --list-all
+# Phải thấy: http, https trong services
+```
+
+5. **Kiểm tra domain trỏ về đúng IP:**
+```bash
+dig +short quanlycuahangabc.id.vn
+# Phải chỉ có 1 IP duy nhất (IP của VPS)
+```
+
+6. **Test HTTPS từ VPS:**
+```bash
+curl -I https://quanlycuahangabc.id.vn
+# Nếu lỗi SSL, sẽ thấy thông báo lỗi
+```
+
+**Các lỗi thường gặp:**
+
+- **"SSL certificate problem"**: Certificate chưa được tạo hoặc đường dẫn sai
+- **"Connection refused"**: Port 443 chưa mở hoặc Nginx chưa listen 443
+- **"Domain mismatch"**: Domain trong certificate không khớp với domain truy cập
+- **"Certificate expired"**: Certificate đã hết hạn, cần renew
+
+**Khắc phục:**
+
+```bash
+# Nếu certificate chưa có, tạo lại:
+sudo systemctl stop nginx
+sudo certbot certonly --standalone -d quanlycuahangabc.id.vn -d www.quanlycuahangabc.id.vn
+sudo systemctl start nginx
+
+# Nếu certificate hết hạn, renew:
+sudo certbot renew
+
+# Nếu cấu hình Nginx sai, kiểm tra lại:
+sudo nginx -t
+sudo systemctl restart nginx
+```
 
 ---
 

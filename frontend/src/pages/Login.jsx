@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { setAuth, isAdmin } from '../utils/auth';
+import { setAuth, isAdmin, isRoot } from '../utils/auth';
 
 function Login() {
   const [phone, setPhone] = useState('');
@@ -53,7 +53,10 @@ function Login() {
       
       setAuth(token, user);
 
-      if (isAdmin()) {
+      // Root admin chỉ có thể truy cập Dashboard và Admin Management
+      if (isRoot()) {
+        navigate('/admin');
+      } else if (isAdmin()) {
         navigate('/admin');
       } else {
         navigate('/');
@@ -98,7 +101,10 @@ function Login() {
       
       setAuth(token, user);
 
-      if (isAdmin()) {
+      // Root admin chỉ có thể truy cập Dashboard và Admin Management
+      if (isRoot()) {
+        navigate('/admin');
+      } else if (isAdmin()) {
         navigate('/admin');
       } else {
         navigate('/');

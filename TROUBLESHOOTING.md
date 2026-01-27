@@ -231,6 +231,227 @@ Khi gặp lỗi CORS, kiểm tra theo thứ tự:
 
 ---
 
+## Lỗi HTTPS không hoạt động
+
+### Nguyên nhân:
+- Certificate chưa được tạo hoặc đã hết hạn
+- Nginx chưa được cấu hình SSL
+- Firewall chưa mở port 443
+- Domain chưa trỏ về đúng IP VPS
+
+### Cách khắc phục:
+
+#### Bước 1: Kiểm tra certificate đã được tạo
+
+```bash
+# Kiểm tra certificate
+sudo ls -la /etc/letsencrypt/live/quanlycuahangabc.id.vn/
+
+# Phải thấy:
+# - fullchain.pem
+# - privkey.pem
+```
+
+**Nếu không có certificate:**
+```bash
+# Tạo certificate bằng standalone mode
+sudo systemctl stop nginx
+sudo certbot certonly --standalone -d quanlycuahangabc.id.vn -d www.quanlycuahangabc.id.vn
+sudo systemctl start nginx
+```
+
+#### Bước 2: Kiểm tra cấu hình Nginx có SSL
+
+```bash
+# Xem cấu hình Nginx
+sudo cat /etc/nginx/conf.d/laundry-frontend.conf
+
+# Phải thấy:
+# - listen 443 ssl http2;
+# - ssl_certificate /etc/letsencrypt/live/.../fullchain.pem;
+# - ssl_certificate_key /etc/letsencrypt/live/.../privkey.pem;
+```
+
+**Nếu chưa có cấu hình SSL, xem hướng dẫn trong DEPLOY_MANUAL.md phần 4.1**
+
+#### Bước 3: Kiểm tra Nginx có lỗi
+
+```bash
+# Test cấu hình
+sudo nginx -t
+
+# Xem logs lỗi
+sudo tail -f /var/log/nginx/error.log
+```
+
+**Nếu có lỗi, sửa cấu hình và restart:**
+```bash
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### Bước 4: Kiểm tra Firewall
+
+```bash
+# Kiểm tra firewall
+sudo firewall-cmd --list-all
+
+# Phải thấy: http, https trong services
+# Nếu chưa có, thêm:
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+#### Bước 5: Kiểm tra Domain trỏ về đúng IP
+
+```bash
+# Kiểm tra IP của domain
+dig +short quanlycuahangabc.id.vn
+
+# Phải chỉ có 1 IP duy nhất (IP của VPS, ví dụ: 103.130.212.155)
+# Nếu có nhiều IP hoặc IP sai, cần cập nhật A record trong DNS
+```
+
+#### Bước 6: Test HTTPS từ VPS
+
+```bash
+# Test HTTPS
+curl -I https://quanlycuahangabc.id.vn
+
+# Nếu lỗi SSL, sẽ thấy thông báo lỗi cụ thể
+```
+
+#### Bước 7: Renew Certificate (nếu hết hạn)
+
+```bash
+# Kiểm tra ngày hết hạn
+sudo certbot certificates
+
+# Renew certificate
+sudo certbot renew
+
+# Hoặc renew thủ công
+sudo certbot certonly --standalone -d quanlycuahangabc.id.vn -d www.quanlycuahangabc.id.vn
+```
+
+### Các lỗi thường gặp:
+
+**1. "SSL certificate problem" hoặc "certificate verify failed"**
+- **Nguyên nhân**: Certificate chưa được tạo hoặc đường dẫn sai
+- **Khắc phục**: Tạo lại certificate (xem Bước 1)
+
+**2. "Connection refused" khi truy cập HTTPS**
+- **Nguyên nhân**: Port 443 chưa mở hoặc Nginx chưa listen 443
+- **Khắc phục**: 
+  - Kiểm tra firewall (Bước 4)
+  - Kiểm tra cấu hình Nginx có `listen 443 ssl` (Bước 2)
+
+**3. "Domain mismatch" hoặc "certificate name mismatch"**
+- **Nguyên nhân**: Domain trong certificate không khớp với domain truy cập
+- **Khắc phục**: Tạo lại certificate với đúng domain
+
+**4. "Certificate expired"**
+- **Nguyên nhân**: Certificate đã hết hạn (Let's Encrypt có thời hạn 90 ngày)
+- **Khắc phục**: Renew certificate (Bước 7)
+
+**5. "404 Not Found" với `/.well-known/acme-challenge/`**
+- **Nguyên nhân**: Nginx chưa được cấu hình để serve Let's Encrypt challenge
+- **Khắc phục**: 
+  - Thêm location block cho `/.well-known/` vào cấu hình Nginx
+  - Hoặc dùng standalone mode để tạo certificate
+
+### Kiểm tra nhanh:
+
+```bash
+# 1. Certificate có tồn tại?
+sudo test -f /etc/letsencrypt/live/quanlycuahangabc.id.vn/fullchain.pem && echo "OK" || echo "MISSING"
+
+# 2. Nginx có listen 443?
+sudo grep -q "listen 443" /etc/nginx/conf.d/laundry-frontend.conf && echo "OK" || echo "MISSING"
+
+# 3. Firewall có mở HTTPS?
+sudo firewall-cmd --list-services | grep -q https && echo "OK" || echo "MISSING"
+
+# 4. Domain trỏ về đúng IP?
+dig +short quanlycuahangabc.id.vn | grep -q "103.130.212.155" && echo "OK" || echo "WRONG IP"
+```
+
+---
+
+## Lỗi: "Unknown column 'p.store_id'" hoặc "Unknown column 'store_id' in 'field list'" (bảng products)
+
+### Nguyên nhân:
+Bảng `products` thiếu cột `store_id`. Điều này xảy ra khi:
+- Database được tạo trước khi code mới được deploy
+- Migration chưa được chạy sau khi update code
+
+### Cách khắc phục:
+
+#### Bước 1: Chạy migration trên VPS
+
+```bash
+# Di chuyển vào thư mục backend
+cd /var/www/laundry-backend
+
+# Chạy migration để thêm cột store_id vào bảng products
+npm run migrate-products
+```
+
+**Kết quả mong đợi:**
+```
+Checking products table for missing store_id column...
+Adding store_id column to products table...
+✅ Added store_id column
+✅ Added foreign key constraint for store_id
+✅ Migration completed successfully!
+Done!
+```
+
+#### Bước 2: Kiểm tra cột đã được thêm
+
+**Kết nối MySQL:**
+```bash
+mysql -u root -p laundry66
+# Hoặc: mysql -u laundry_user -p laundry66
+```
+
+**Kiểm tra trong MySQL:**
+```sql
+-- Xem cấu trúc bảng products
+DESCRIBE products;
+
+-- Hoặc
+SHOW COLUMNS FROM products;
+```
+
+**Phải thấy cột:**
+- `store_id INT NULL`
+
+#### Bước 3: Restart backend
+
+```bash
+pm2 restart laundry-backend
+```
+
+#### Bước 4: Kiểm tra logs
+
+```bash
+pm2 logs laundry-backend --lines 20
+```
+
+**Nếu vẫn còn lỗi:**
+- Kiểm tra xem migration đã chạy thành công chưa
+- Kiểm tra lại cấu trúc bảng trong MySQL
+- Xem logs chi tiết để tìm lỗi cụ thể
+
+#### Lưu ý:
+- Migration script sẽ tự động kiểm tra và chỉ thêm cột còn thiếu
+- Nếu cột đã tồn tại, script sẽ bỏ qua và không báo lỗi
+- Có thể chạy migration nhiều lần mà không ảnh hưởng đến dữ liệu
+- Khi chạy `npm run init-db`, script sẽ tự động thêm cột này nếu thiếu
+
+---
+
 ## Liên hệ hỗ trợ
 
 Nếu vẫn không giải quyết được:
@@ -238,3 +459,4 @@ Nếu vẫn không giải quyết được:
 2. Kiểm tra logs của backend (terminal nơi chạy `npm run dev`)
 3. Kiểm tra browser console (F12)
 4. Kiểm tra Network tab trong DevTools
+5. Xem logs Nginx: `sudo tail -f /var/log/nginx/error.log`

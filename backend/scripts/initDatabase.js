@@ -148,6 +148,101 @@ async function ensureStoresForeignKeys(connection) {
   }
 }
 
+async function ensureProductsColumns(connection) {
+  try {
+    // First check if products table exists
+    const [productsTableCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = ? AND table_name = 'products'
+      `,
+      [DB_NAME]
+    );
+
+    if (!productsTableCheck?.[0] || productsTableCheck[0].count === 0) {
+      console.log('Products table does not exist yet, skipping column check');
+      return;
+    }
+
+    const [check] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'products' AND column_name = 'store_id'
+      `,
+      [DB_NAME]
+    );
+
+    if (check?.[0]?.count > 0) {
+      console.log(`✓ Column products.store_id already exists`);
+      
+      // Check foreign key
+      const [fkCheck] = await connection.query(
+        `
+        SELECT COUNT(*) as count
+        FROM information_schema.table_constraints
+        WHERE table_schema = ? AND table_name = 'products' AND constraint_name = 'fk_products_store_id'
+        `,
+        [DB_NAME]
+      );
+      
+      if (fkCheck?.[0]?.count > 0) {
+        console.log(`✓ Foreign key fk_products_store_id already exists`);
+      } else {
+        try {
+          await connection.query(`
+            ALTER TABLE products 
+            ADD CONSTRAINT fk_products_store_id 
+            FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL
+          `);
+          console.log(`✓ Added foreign key fk_products_store_id`);
+        } catch (fkError) {
+          if (fkError.code === 'ER_FK_DUP_NAME' || fkError.code === 'ER_DUP_KEYNAME') {
+            console.log(`✓ Foreign key fk_products_store_id already exists`);
+          } else {
+            console.warn(`Warning adding foreign key fk_products_store_id: ${fkError.message}`);
+          }
+        }
+      }
+      return;
+    }
+
+    // Add column
+    try {
+      await connection.query(`
+        ALTER TABLE products 
+        ADD COLUMN store_id INT NULL AFTER updated_by
+      `);
+      console.log(`✓ Added column products.store_id`);
+      
+      // Add foreign key
+      try {
+        await connection.query(`
+          ALTER TABLE products 
+          ADD CONSTRAINT fk_products_store_id 
+          FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL
+        `);
+        console.log(`✓ Added foreign key fk_products_store_id`);
+      } catch (fkError) {
+        if (fkError.code === 'ER_FK_DUP_NAME' || fkError.code === 'ER_DUP_KEYNAME') {
+          console.log(`✓ Foreign key fk_products_store_id already exists`);
+        } else {
+          console.warn(`Warning adding foreign key fk_products_store_id: ${fkError.message}`);
+        }
+      }
+    } catch (error) {
+      if (error.code === 'ER_DUP_FIELDNAME') {
+        console.log(`✓ Column products.store_id already exists`);
+      } else {
+        console.error(`Error adding column products.store_id:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('Error in ensureProductsColumns:', error.message);
+  }
+}
+
 async function ensureOrdersColumns(connection) {
   try {
     // First check if orders table exists
@@ -430,6 +525,9 @@ async function ensureSchema() {
       }
 
       await ensureStoresForeignKeys(connection);
+      
+      // Ensure products table has store_id column
+      await ensureProductsColumns(connection);
       
       // Ensure orders table has store_id and payment_method columns
       await ensureOrdersColumns(connection);
