@@ -286,6 +286,62 @@ function Timesheets() {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const params = new URLSearchParams();
+      
+      if (periodViewMode === 'month') {
+        const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+        const daysInMonth = getDaysInMonth(new Date(selectedYear, selectedMonth - 1));
+        const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
+      } else if (periodViewMode === 'year') {
+        params.append('start_date', `${selectedYear}-01-01`);
+        params.append('end_date', `${selectedYear}-12-31`);
+      } else {
+        params.append('date', selectedDate);
+      }
+      
+      if (isAdmin() && selectedStoreId && selectedStoreId !== 'all') {
+        params.append('store_id', selectedStoreId);
+      }
+
+      const response = await api.get(`/timesheets/export?${params.toString()}`, {
+        responseType: 'blob'
+      });
+
+      // Create blob and download
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = `ChamCong_${selectedDate || `${selectedMonth}_${selectedYear}`}.xlsx`;
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = decodeURIComponent(fileNameMatch[1].replace(/['"]/g, ''));
+        }
+      }
+      
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      alert('Xuất Excel thành công!');
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      alert(error.response?.data?.error || 'Có lỗi xảy ra khi xuất Excel');
+    }
+  };
+
   const getWeekNumber = (date) => {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
@@ -460,6 +516,14 @@ function Timesheets() {
                 }`}
               >
                 Tính lương
+              </button>
+              <button
+                onClick={handleExportExcel}
+                className="px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 touch-manipulation bg-green-600 text-white hover:bg-green-700 shadow-lg flex items-center gap-1"
+                title="Xuất Excel"
+              >
+                <span>📊</span>
+                <span>Xuất Excel</span>
               </button>
             </div>
           </div>

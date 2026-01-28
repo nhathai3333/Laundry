@@ -167,6 +167,52 @@ function Reports() {
     return titles[reportType] || 'Báo cáo';
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const params = new URLSearchParams();
+      params.append('type', reportType);
+      params.append('month', selectedMonth);
+      params.append('year', selectedYear);
+      
+      if (isAdmin() && selectedStoreId !== 'all') {
+        params.append('store_id', selectedStoreId);
+      }
+
+      const response = await api.get(`/reports/export?${params.toString()}`, {
+        responseType: 'blob'
+      });
+
+      // Create blob and download
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = `BaoCao_${reportType}_${selectedMonth}_${selectedYear}.xlsx`;
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = decodeURIComponent(fileNameMatch[1].replace(/['"]/g, ''));
+        }
+      }
+      
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      alert('Xuất Excel thành công!');
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      alert(error.response?.data?.error || 'Có lỗi xảy ra khi xuất Excel');
+    }
+  };
+
   const getTableHeaders = () => {
     switch (reportType) {
       case 'product':
@@ -452,6 +498,14 @@ function Reports() {
             }}
               className="px-3 py-2 border rounded-lg w-32"
             />
+            <button
+              onClick={handleExportExcel}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+              title="Xuất Excel"
+            >
+              <span>📊</span>
+              <span>Xuất Excel</span>
+            </button>
           </div>
         </div>
       </div>

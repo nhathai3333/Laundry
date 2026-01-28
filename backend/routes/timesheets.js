@@ -4,6 +4,7 @@ import { calculateHours } from '../utils/helpers.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
 import { OVERTIME_MULTIPLIER } from '../utils/constants.js';
+import * as XLSX from 'xlsx';
 
 const router = express.Router();
 
@@ -661,6 +662,133 @@ router.get('/daily-hours', authorize('admin'), async (req, res) => {
   } catch (error) {
     console.error('Get daily hours error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Export timesheets to Excel
+router.get('/export', async (req, res) => {
+  try {
+    const { user_id, date, month, year, start_date, end_date, store_id } = req.query;
+    
+    let sqlQuery = `
+      SELECT 
+        t.id,
+        u.name as user_name,
+        COALESCE(e.name, u.name) as employee_name,
+        DATE(t.check_in) as date,
+        TIME(t.check_in) as check_in_time,
+        TIME(t.check_out) as check_out_time,
+        t.regular_hours,
+        t.overtime_hours,
+        t.revenue_amount,
+        t.expected_revenue,
+        t.note,
+        s.name as store_name
+      FROM timesheets t
+      JOIN users u ON t.user_id = u.id
+      LEFT JOIN employees e ON t.employee_id = e.id
+      LEFT JOIN stores s ON t.store_id = s.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    // Admin can filter by store_id from query param or token
+    // Employer can only see their own
+    const storeIdParam = store_id || req.query.store_id;
+    if (req.user.role === 'admin') {
+      if (storeIdParam && storeIdParam !== 'all') {
+        sqlQuery += ' AND t.store_id = ?';
+        params.push(storeIdParam);
+      }
+    } else if (req.user.role === 'employer') {
+      sqlQuery += ' AND t.user_id = ?';
+      params.push(req.user.id);
+    } else if (user_id) {
+      sqlQuery += ' AND t.user_id = ?';
+      params.push(user_id);
+    }
+
+    if (date) {
+      sqlQuery += ' AND DATE(t.check_in) = ?';
+      params.push(date);
+    }
+
+    if (start_date && end_date) {
+      sqlQuery += ' AND DATE(t.check_in) >= ? AND DATE(t.check_in) <= ?';
+      params.push(start_date, end_date);
+    }
+
+    if (month && year) {
+      const monthStr = String(month).padStart(2, '0');
+      sqlQuery += ` AND DATE_FORMAT(t.check_in, '%m') = ? AND DATE_FORMAT(t.check_in, '%Y') = ?`;
+      params.push(monthStr, year);
+    }
+
+    sqlQuery += ' ORDER BY t.check_in DESC';
+
+    const timesheets = await query(sqlQuery, params);
+
+    // Format data for Excel
+    const data = timesheets.map(t => ({
+      'ID': t.id,
+      'Tên nhân viên': t.employee_name || t.user_name,
+      'Ngày': t.date,
+      'Giờ vào': t.check_in_time || '',
+      'Giờ ra': t.check_out_time || '',
+      'Giờ thường': t.regular_hours || 0,
+      'Giờ tăng ca': t.overtime_hours || 0,
+      'Doanh thu': t.revenue_amount || 0,
+      'Doanh thu dự kiến': t.expected_revenue || 0,
+      'Ghi chú': t.note || '',
+      'Cửa hàng': t.store_name || ''
+    }));
+
+    // Create workbook and worksheet
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },   // ID
+      { wch: 20 },  // Tên nhân viên
+      { wch: 12 },  // Ngày
+      { wch: 10 },  // Giờ vào
+      { wch: 10 },  // Giờ ra
+      { wch: 12 },  // Giờ thường
+      { wch: 12 },  // Giờ tăng ca
+      { wch: 15 },  // Doanh thu
+      { wch: 18 },  // Doanh thu dự kiến
+      { wch: 30 },  // Ghi chú
+      { wch: 20 }   // Cửa hàng
+    ];
+    worksheet['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Chấm công');
+
+    // Generate filename
+    let fileName = 'ChamCong';
+    if (date) {
+      fileName += `_${date}`;
+    } else if (month && year) {
+      fileName += `_${month}_${year}`;
+    } else if (start_date && end_date) {
+      fileName += `_${start_date}_${end_date}`;
+    } else {
+      fileName += `_${new Date().toISOString().slice(0, 10)}`;
+    }
+    fileName += '.xlsx';
+
+    // Generate buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set headers
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+
+    res.send(buffer);
+  } catch (error) {
+    console.error('Export timesheets error:', error);
+    res.status(500).json({ error: 'Lỗi khi export chấm công' });
   }
 });
 

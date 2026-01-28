@@ -3,6 +3,7 @@ import { query, queryOne, execute } from '../database/db.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
 import { validateId, validatePositiveInteger, validateEnum } from '../utils/validators.js';
+import * as XLSX from 'xlsx';
 
 const router = express.Router();
 
@@ -524,14 +525,267 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
 });
 
 // Export reports (Admin only)
-router.get('/export', authorize('admin'), async (req, res) => {
+// Export reports to Excel
+router.get('/export', authorize('admin', 'employer'), async (req, res) => {
   try {
-    const { type } = req.query;
-    // Placeholder for export functionality
-    res.status(501).json({ error: 'Export not implemented yet' });
+    // Root admin is software vendor, not store operator - return empty
+    if (req.user.role === 'root') {
+      return res.status(403).json({ error: 'Root admin không thể export báo cáo' });
+    }
+
+    const { type, month, year, store_id } = req.query;
+    
+    if (!type) {
+      return res.status(400).json({ error: 'Loại báo cáo là bắt buộc' });
+    }
+
+    const monthNum = parseInt(month) || new Date().getMonth() + 1;
+    const yearNum = parseInt(year) || new Date().getFullYear();
+    const storeId = getStoreIdFilter(req) || (store_id && store_id !== 'all' ? parseInt(store_id) : null);
+
+    let data = [];
+    let fileName = '';
+    let sheetName = '';
+
+    switch (type) {
+      case 'product':
+        fileName = `BaoCao_SanPham_${monthNum}_${yearNum}.xlsx`;
+        sheetName = 'Báo cáo sản phẩm';
+        let productQuery = `
+          SELECT 
+            p.name as product_name,
+            p.unit,
+            SUM(oi.quantity) as total_quantity,
+            SUM(oi.quantity * oi.unit_price) as total_revenue,
+            COUNT(DISTINCT oi.order_id) as order_count
+          FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          JOIN orders o ON oi.order_id = o.id
+          WHERE o.status = 'completed'
+            AND DATE_FORMAT(o.updated_at, '%m') = ?
+            AND DATE_FORMAT(o.updated_at, '%Y') = ?
+        `;
+        let productParams = [String(monthNum).padStart(2, '0'), yearNum];
+        
+        if (req.user.role === 'employer') {
+          if (storeId) {
+            productQuery += ` AND (
+              o.store_id = ?
+              OR (o.store_id IS NULL AND (o.assigned_to = ? OR o.created_by = ?))
+            )`;
+            productParams.push(storeId, req.user.id, req.user.id);
+          } else {
+            productQuery += ' AND (o.assigned_to = ? OR o.created_by = ?)';
+            productParams.push(req.user.id, req.user.id);
+          }
+        } else if (req.user.role === 'admin' && storeId) {
+          productQuery += ` AND (
+            o.store_id = ?
+            OR (
+              o.store_id IS NULL AND (
+                o.assigned_to IN (SELECT id FROM users WHERE store_id = ?)
+                OR o.created_by IN (SELECT id FROM users WHERE store_id = ?)
+              )
+            )
+          )`;
+          productParams.push(storeId, storeId, storeId);
+        }
+        
+        productQuery += ' GROUP BY p.id, p.name, p.unit ORDER BY total_revenue DESC';
+        
+        const productData = await query(productQuery, productParams);
+        data = productData.map(item => ({
+          'Tên sản phẩm': item.product_name,
+          'Đơn vị': item.unit,
+          'Số lượng': parseFloat(item.total_quantity) || 0,
+          'Doanh thu': parseFloat(item.total_revenue) || 0,
+          'Số đơn': item.order_count || 0
+        }));
+        break;
+
+      case 'category':
+        fileName = `BaoCao_DanhMuc_${monthNum}_${yearNum}.xlsx`;
+        sheetName = 'Báo cáo danh mục';
+        let categoryQuery = `
+          SELECT 
+            p.unit as category,
+            SUM(oi.quantity) as total_quantity,
+            SUM(oi.quantity * oi.unit_price) as total_revenue,
+            COUNT(DISTINCT oi.order_id) as order_count
+          FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          JOIN orders o ON oi.order_id = o.id
+          WHERE o.status = 'completed'
+            AND DATE_FORMAT(o.updated_at, '%m') = ?
+            AND DATE_FORMAT(o.updated_at, '%Y') = ?
+        `;
+        let categoryParams = [String(monthNum).padStart(2, '0'), yearNum];
+        
+        if (req.user.role === 'employer') {
+          if (storeId) {
+            categoryQuery += ` AND (
+              o.store_id = ?
+              OR (o.store_id IS NULL AND (o.assigned_to = ? OR o.created_by = ?))
+            )`;
+            categoryParams.push(storeId, req.user.id, req.user.id);
+          } else {
+            categoryQuery += ' AND (o.assigned_to = ? OR o.created_by = ?)';
+            categoryParams.push(req.user.id, req.user.id);
+          }
+        } else if (req.user.role === 'admin' && storeId) {
+          categoryQuery += ` AND (
+            o.store_id = ?
+            OR (
+              o.store_id IS NULL AND (
+                o.assigned_to IN (SELECT id FROM users WHERE store_id = ?)
+                OR o.created_by IN (SELECT id FROM users WHERE store_id = ?)
+              )
+            )
+          )`;
+          categoryParams.push(storeId, storeId, storeId);
+        }
+        
+        categoryQuery += ' GROUP BY p.unit ORDER BY total_revenue DESC';
+        
+        const categoryData = await query(categoryQuery, categoryParams);
+        data = categoryData.map(item => ({
+          'Danh mục': item.category,
+          'Số lượng': parseFloat(item.total_quantity) || 0,
+          'Doanh thu': parseFloat(item.total_revenue) || 0,
+          'Số đơn': item.order_count || 0
+        }));
+        break;
+
+      case 'shift':
+        fileName = `BaoCao_Ca_${monthNum}_${yearNum}.xlsx`;
+        sheetName = 'Báo cáo ca làm việc';
+        let shiftQuery = `
+          SELECT 
+            CASE 
+              WHEN HOUR(o.updated_at) >= 6 AND HOUR(o.updated_at) < 14 THEN 'Ca sáng'
+              WHEN HOUR(o.updated_at) >= 14 AND HOUR(o.updated_at) < 22 THEN 'Ca chiều'
+              ELSE 'Ca đêm'
+            END as shift,
+            SUM(o.final_amount) as total_revenue,
+            COUNT(*) as order_count
+          FROM orders o
+          WHERE o.status = 'completed'
+            AND DATE_FORMAT(o.updated_at, '%m') = ?
+            AND DATE_FORMAT(o.updated_at, '%Y') = ?
+        `;
+        let shiftParams = [String(monthNum).padStart(2, '0'), yearNum];
+        
+        if (req.user.role === 'employer') {
+          if (storeId) {
+            shiftQuery += ` AND (
+              o.store_id = ?
+              OR (o.store_id IS NULL AND (o.assigned_to = ? OR o.created_by = ?))
+            )`;
+            shiftParams.push(storeId, req.user.id, req.user.id);
+          } else {
+            shiftQuery += ' AND (o.assigned_to = ? OR o.created_by = ?)';
+            shiftParams.push(req.user.id, req.user.id);
+          }
+        } else if (req.user.role === 'admin' && storeId) {
+          shiftQuery += ` AND (
+            o.store_id = ?
+            OR (
+              o.store_id IS NULL AND (
+                o.assigned_to IN (SELECT id FROM users WHERE store_id = ?)
+                OR o.created_by IN (SELECT id FROM users WHERE store_id = ?)
+              )
+            )
+          )`;
+          shiftParams.push(storeId, storeId, storeId);
+        }
+        
+        shiftQuery += ' GROUP BY shift ORDER BY shift';
+        
+        const shiftData = await query(shiftQuery, shiftParams);
+        data = shiftData.map(item => ({
+          'Ca làm việc': item.shift,
+          'Doanh thu': parseFloat(item.total_revenue) || 0,
+          'Số đơn': item.order_count || 0
+        }));
+        break;
+
+      case 'daily':
+        fileName = `BaoCao_Ngay_${monthNum}_${yearNum}.xlsx`;
+        sheetName = 'Báo cáo theo ngày';
+        let dailyQuery = `
+          SELECT 
+            DATE(o.updated_at) as date,
+            SUM(o.final_amount) as total_revenue,
+            COUNT(*) as order_count
+          FROM orders o
+          WHERE o.status = 'completed'
+            AND DATE_FORMAT(o.updated_at, '%m') = ?
+            AND DATE_FORMAT(o.updated_at, '%Y') = ?
+        `;
+        let dailyParams = [String(monthNum).padStart(2, '0'), yearNum];
+        
+        if (req.user.role === 'employer') {
+          if (storeId) {
+            dailyQuery += ` AND (
+              o.store_id = ?
+              OR (o.store_id IS NULL AND (o.assigned_to = ? OR o.created_by = ?))
+            )`;
+            dailyParams.push(storeId, req.user.id, req.user.id);
+          } else {
+            dailyQuery += ' AND (o.assigned_to = ? OR o.created_by = ?)';
+            dailyParams.push(req.user.id, req.user.id);
+          }
+        } else if (req.user.role === 'admin' && storeId) {
+          dailyQuery += ` AND (
+            o.store_id = ?
+            OR (
+              o.store_id IS NULL AND (
+                o.assigned_to IN (SELECT id FROM users WHERE store_id = ?)
+                OR o.created_by IN (SELECT id FROM users WHERE store_id = ?)
+              )
+            )
+          )`;
+          dailyParams.push(storeId, storeId, storeId);
+        }
+        
+        dailyQuery += ' GROUP BY DATE(o.updated_at) ORDER BY DATE(o.updated_at)';
+        
+        const dailyData = await query(dailyQuery, dailyParams);
+        data = dailyData.map(item => ({
+          'Ngày': item.date,
+          'Doanh thu': parseFloat(item.total_revenue) || 0,
+          'Số đơn': item.order_count || 0
+        }));
+        break;
+
+      default:
+        return res.status(400).json({ error: 'Loại báo cáo không hợp lệ' });
+    }
+
+    // Create workbook and worksheet
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    
+    // Set column widths
+    const maxWidth = 50;
+    const colWidths = Object.keys(data[0] || {}).map(key => ({
+      wch: Math.min(key.length + 5, maxWidth)
+    }));
+    worksheet['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+    // Generate buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set headers
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+
+    res.send(buffer);
   } catch (error) {
-    console.error('Export error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Export reports error:', error);
+    res.status(500).json({ error: 'Lỗi khi export báo cáo' });
   }
 });
 
