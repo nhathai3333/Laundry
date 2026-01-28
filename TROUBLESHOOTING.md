@@ -452,6 +452,163 @@ pm2 logs laundry-backend --lines 20
 
 ---
 
+## Lỗi: "Table 'laundry66.login_attempts' doesn't exist"
+
+### Nguyên nhân:
+Bảng `login_attempts` chưa được tạo trong database. Bảng này dùng để log các lần đăng nhập (thành công và thất bại) để bảo mật.
+
+### Cách khắc phục:
+
+#### Bước 1: Chạy migration trên VPS
+
+```bash
+# Di chuyển vào thư mục backend
+cd /var/www/laundry-backend
+
+# Chạy migration để tạo bảng login_attempts
+npm run migrate-login-attempts
+```
+
+**Kết quả mong đợi:**
+```
+Checking if login_attempts table exists...
+Creating login_attempts table...
+✅ Created login_attempts table
+✅ Created indexes for login_attempts table
+✅ Migration completed successfully!
+Done!
+```
+
+#### Bước 2: Kiểm tra bảng đã được tạo
+
+**Kết nối MySQL:**
+```bash
+mysql -u root -p laundry66
+# Hoặc: mysql -u laundry_user -p laundry66
+```
+
+**Kiểm tra trong MySQL:**
+```sql
+-- Xem bảng login_attempts
+SHOW TABLES LIKE 'login_attempts';
+
+-- Xem cấu trúc bảng
+DESCRIBE login_attempts;
+```
+
+**Phải thấy bảng với các cột:**
+- `id` (INT AUTO_INCREMENT PRIMARY KEY)
+- `phone` (VARCHAR(50))
+- `ip_address` (VARCHAR(45))
+- `success` (BOOLEAN)
+- `failure_reason` (TEXT)
+- `user_agent` (TEXT)
+- `created_at` (DATETIME)
+
+#### Bước 3: Restart backend
+
+```bash
+pm2 restart laundry-backend
+```
+
+#### Bước 4: Kiểm tra logs
+
+```bash
+pm2 logs laundry-backend --lines 20
+```
+
+**Nếu vẫn còn lỗi:**
+- Kiểm tra xem migration đã chạy thành công chưa
+- Kiểm tra lại cấu trúc bảng trong MySQL
+- Xem logs chi tiết để tìm lỗi cụ thể
+
+#### Lưu ý:
+- Migration script sẽ tự động kiểm tra và chỉ tạo bảng nếu chưa tồn tại
+- Nếu bảng đã tồn tại, script sẽ bỏ qua và không báo lỗi
+- Có thể chạy migration nhiều lần mà không ảnh hưởng đến dữ liệu
+- Khi chạy `npm run init-db`, script sẽ tự động tạo bảng này nếu thiếu
+
+---
+
+## Lỗi: "Unknown column 'store_id' in 'where clause'" (bảng settings)
+
+### Nguyên nhân:
+Bảng `settings` thiếu cột `store_id`. Điều này xảy ra khi:
+- Database được tạo trước khi code mới được deploy
+- Migration chưa được chạy sau khi update code
+
+### Cách khắc phục:
+
+#### Bước 1: Chạy migration trên VPS
+
+```bash
+# Di chuyển vào thư mục backend
+cd /var/www/laundry-backend
+
+# Chạy migration để thêm cột store_id vào bảng settings
+npm run migrate-settings
+```
+
+**Kết quả mong đợi:**
+```
+Checking settings table for missing store_id column...
+Adding store_id column to settings table...
+✅ Added store_id column
+✅ Dropped old unique constraint on key
+✅ Added unique constraint unique_key_store
+✅ Added foreign key constraint for store_id
+✅ Migration completed successfully!
+Done!
+```
+
+#### Bước 2: Kiểm tra cột đã được thêm
+
+**Kết nối MySQL:**
+```bash
+mysql -u root -p laundry66
+# Hoặc: mysql -u laundry_user -p laundry66
+```
+
+**Kiểm tra trong MySQL:**
+```sql
+-- Xem cấu trúc bảng settings
+DESCRIBE settings;
+
+-- Hoặc
+SHOW COLUMNS FROM settings;
+```
+
+**Phải thấy cột:**
+- `store_id INT NULL`
+- Unique constraint: `unique_key_store` trên (`key`, `store_id`)
+- Foreign key: `fk_settings_store_id` tham chiếu đến `stores(id)`
+
+#### Bước 3: Restart backend
+
+```bash
+pm2 restart laundry-backend
+```
+
+#### Bước 4: Kiểm tra logs
+
+```bash
+pm2 logs laundry-backend --lines 20
+```
+
+**Nếu vẫn còn lỗi:**
+- Kiểm tra xem migration đã chạy thành công chưa
+- Kiểm tra lại cấu trúc bảng trong MySQL
+- Xem logs chi tiết để tìm lỗi cụ thể
+
+#### Lưu ý:
+- Migration script sẽ tự động kiểm tra và chỉ thêm cột còn thiếu
+- Nếu cột đã tồn tại, script sẽ bỏ qua và không báo lỗi
+- Có thể chạy migration nhiều lần mà không ảnh hưởng đến dữ liệu
+- Khi chạy `npm run init-db`, script sẽ tự động thêm cột này nếu thiếu
+- Unique constraint đã được thay đổi từ chỉ `key` thành `(key, store_id)` để cho phép cùng một key cho nhiều cửa hàng khác nhau
+
+---
+
 ## Liên hệ hỗ trợ
 
 Nếu vẫn không giải quyết được:

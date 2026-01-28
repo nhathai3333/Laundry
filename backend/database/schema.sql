@@ -73,13 +73,13 @@ CREATE TABLE IF NOT EXISTS customers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Promotions table (must be created before orders)
+-- Chỉ hỗ trợ khuyến mãi theo giá trị đơn hàng (bill_amount)
 CREATE TABLE IF NOT EXISTS promotions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    type ENUM('order_count', 'bill_amount') NOT NULL,
-    min_order_count INT DEFAULT NULL,
-    min_bill_amount DECIMAL(10, 2) DEFAULT NULL,
+    type ENUM('bill_amount') NOT NULL DEFAULT 'bill_amount',
+    min_bill_amount DECIMAL(10, 2) NOT NULL,
     discount_type ENUM('percentage', 'fixed') NOT NULL,
     discount_value DECIMAL(10, 2) NOT NULL,
     max_discount_amount DECIMAL(10, 2) DEFAULT NULL,
@@ -179,10 +179,27 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 -- Settings table
 CREATE TABLE IF NOT EXISTS settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    `key` VARCHAR(100) UNIQUE NOT NULL,
+    `key` VARCHAR(100) NOT NULL,
     value TEXT,
+    store_id INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_key_store (`key`, store_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Login attempts table (for security logging)
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    phone VARCHAR(50),
+    ip_address VARCHAR(45),
+    success BOOLEAN NOT NULL DEFAULT false,
+    failure_reason TEXT,
+    user_agent TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_phone (phone),
+    INDEX idx_ip (ip_address),
+    INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Indexes for better performance

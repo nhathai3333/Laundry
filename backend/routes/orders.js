@@ -317,15 +317,8 @@ router.post('/', auditLog('create', 'order'), async (req, res) => {
           if (now >= startDate && now <= endDate) {
             // Check if customer meets promotion criteria
             const orderCount = customer.total_orders || 0;
-            let meetsCriteria = false;
-            
-            if (promotion.type === 'order_count' && promotion.min_order_count <= orderCount) {
-              meetsCriteria = true;
-            } else if (promotion.type === 'bill_amount' && promotion.min_bill_amount <= total) {
-              meetsCriteria = true;
-            }
-            
-            if (meetsCriteria) {
+            // Chỉ hỗ trợ khuyến mãi theo giá trị đơn hàng
+            if (promotion.type === 'bill_amount' && promotion.min_bill_amount <= total) {
               // Store promotion for later validation after store_id is determined
               promotionValidated = true;
               finalPromotionId = promotion.id;

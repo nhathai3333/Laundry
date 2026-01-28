@@ -288,6 +288,33 @@ async function ensureOrdersColumns(connection) {
 
         if (check?.[0]?.count > 0) {
           console.log(`✓ Column orders.${col.name} already exists`);
+          
+          // Check foreign key if specified
+          if (col.fk) {
+            const [fkCheck] = await connection.query(
+              `
+              SELECT COUNT(*) as count
+              FROM information_schema.table_constraints
+              WHERE table_schema = ? AND table_name = 'orders' AND constraint_name = ?
+              `,
+              [DB_NAME, col.fk.name]
+            );
+            
+            if (fkCheck?.[0]?.count === 0) {
+              try {
+                await connection.query(col.fk.constraint);
+                console.log(`✓ Added foreign key ${col.fk.name}`);
+              } catch (fkError) {
+                if (fkError.code === 'ER_FK_DUP_NAME' || fkError.code === 'ER_DUP_KEYNAME') {
+                  console.log(`✓ Foreign key ${col.fk.name} already exists`);
+                } else {
+                  console.warn(`Warning adding foreign key ${col.fk.name}: ${fkError.message}`);
+                }
+              }
+            } else {
+              console.log(`✓ Foreign key ${col.fk.name} already exists`);
+            }
+          }
           continue;
         }
 
@@ -333,6 +360,349 @@ async function ensureOrdersColumns(connection) {
   } catch (error) {
     console.error('Error in ensureOrdersColumns:', error.message);
     // Don't throw - allow init to continue
+  }
+}
+
+async function ensureSettingsColumns(connection) {
+  try {
+    // First check if settings table exists
+    const [settingsTableCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = ? AND table_name = 'settings'
+      `,
+      [DB_NAME]
+    );
+
+    if (!settingsTableCheck?.[0] || settingsTableCheck[0].count === 0) {
+      console.log('Settings table does not exist yet, skipping column check');
+      return;
+    }
+
+    // Check if store_id column exists
+    const [check] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'settings' AND column_name = 'store_id'
+      `,
+      [DB_NAME]
+    );
+
+    if (check?.[0]?.count > 0) {
+      console.log(`✓ Column settings.store_id already exists`);
+      
+      // Check unique constraint for (key, store_id)
+      const [uniqueCheck] = await connection.query(
+        `
+        SELECT COUNT(*) as count
+        FROM information_schema.table_constraints
+        WHERE table_schema = ? AND table_name = 'settings' AND constraint_name = 'unique_key_store'
+        `,
+        [DB_NAME]
+      );
+      
+      if (uniqueCheck?.[0]?.count === 0) {
+        // Check if old UNIQUE constraint on key exists and drop it
+        const [oldUniqueCheck] = await connection.query(
+          `
+          SELECT COUNT(*) as count
+          FROM information_schema.table_constraints
+          WHERE table_schema = ? AND table_name = 'settings' AND constraint_name = 'key'
+          `,
+          [DB_NAME]
+        );
+        
+        if (oldUniqueCheck?.[0]?.count > 0) {
+          try {
+            await connection.query(`ALTER TABLE settings DROP INDEX \`key\``);
+            console.log(`✓ Dropped old unique constraint on key`);
+          } catch (dropError) {
+            // Ignore if constraint doesn't exist
+            if (dropError.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
+              console.warn(`Warning dropping old constraint: ${dropError.message}`);
+            }
+          }
+        }
+        
+        // Add new unique constraint
+        try {
+          await connection.query(`ALTER TABLE settings ADD UNIQUE KEY unique_key_store (\`key\`, store_id)`);
+          console.log(`✓ Added unique constraint unique_key_store`);
+        } catch (uniqueError) {
+          if (uniqueError.code === 'ER_DUP_KEYNAME' || uniqueError.code === 'ER_DUP_ENTRY') {
+            console.log(`✓ Unique constraint unique_key_store already exists`);
+          } else {
+            console.warn(`Warning adding unique constraint: ${uniqueError.message}`);
+          }
+        }
+      } else {
+        console.log(`✓ Unique constraint unique_key_store already exists`);
+      }
+      
+      // Check foreign key
+      const [fkCheck] = await connection.query(
+        `
+        SELECT COUNT(*) as count
+        FROM information_schema.table_constraints
+        WHERE table_schema = ? AND table_name = 'settings' AND constraint_name = 'fk_settings_store_id'
+        `,
+        [DB_NAME]
+      );
+      
+      if (fkCheck?.[0]?.count === 0) {
+        try {
+          await connection.query(`
+            ALTER TABLE settings 
+            ADD CONSTRAINT fk_settings_store_id 
+            FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+          `);
+          console.log(`✓ Added foreign key fk_settings_store_id`);
+        } catch (fkError) {
+          if (fkError.code === 'ER_FK_DUP_NAME' || fkError.code === 'ER_DUP_KEYNAME') {
+            console.log(`✓ Foreign key fk_settings_store_id already exists`);
+          } else {
+            console.warn(`Warning adding foreign key fk_settings_store_id: ${fkError.message}`);
+          }
+        }
+      } else {
+        console.log(`✓ Foreign key fk_settings_store_id already exists`);
+      }
+      return;
+    }
+
+    // Add column
+    try {
+      await connection.query(`
+        ALTER TABLE settings 
+        ADD COLUMN store_id INT NULL AFTER value
+      `);
+      console.log(`✓ Added column settings.store_id`);
+      
+      // Drop old UNIQUE constraint on key if exists
+      const [oldUniqueCheck] = await connection.query(
+        `
+        SELECT COUNT(*) as count
+        FROM information_schema.table_constraints
+        WHERE table_schema = ? AND table_name = 'settings' AND constraint_name = 'key'
+        `,
+        [DB_NAME]
+      );
+      
+      if (oldUniqueCheck?.[0]?.count > 0) {
+        try {
+          await connection.query(`ALTER TABLE settings DROP INDEX \`key\``);
+          console.log(`✓ Dropped old unique constraint on key`);
+        } catch (dropError) {
+          if (dropError.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
+            console.warn(`Warning dropping old constraint: ${dropError.message}`);
+          }
+        }
+      }
+      
+      // Add new unique constraint
+      try {
+        await connection.query(`ALTER TABLE settings ADD UNIQUE KEY unique_key_store (\`key\`, store_id)`);
+        console.log(`✓ Added unique constraint unique_key_store`);
+      } catch (uniqueError) {
+        if (uniqueError.code === 'ER_DUP_KEYNAME' || uniqueError.code === 'ER_DUP_ENTRY') {
+          console.log(`✓ Unique constraint unique_key_store already exists`);
+        } else {
+          console.warn(`Warning adding unique constraint: ${uniqueError.message}`);
+        }
+      }
+      
+      // Add foreign key
+      try {
+        await connection.query(`
+          ALTER TABLE settings 
+          ADD CONSTRAINT fk_settings_store_id 
+          FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+        `);
+        console.log(`✓ Added foreign key fk_settings_store_id`);
+      } catch (fkError) {
+        if (fkError.code === 'ER_FK_DUP_NAME' || fkError.code === 'ER_DUP_KEYNAME') {
+          console.log(`✓ Foreign key fk_settings_store_id already exists`);
+        } else {
+          console.warn(`Warning adding foreign key fk_settings_store_id: ${fkError.message}`);
+        }
+      }
+    } catch (error) {
+      if (error.code === 'ER_DUP_FIELDNAME') {
+        console.log(`✓ Column settings.store_id already exists`);
+      } else {
+        console.error(`Error adding column settings.store_id:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('Error in ensureSettingsColumns:', error.message);
+    // Don't throw - allow init to continue
+  }
+}
+
+async function ensurePromotionsColumns(connection) {
+  try {
+    // Check if promotions table exists
+    const [tableCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = ? AND table_name = 'promotions'
+      `,
+      [DB_NAME]
+    );
+
+    if (!tableCheck?.[0] || tableCheck[0].count === 0) {
+      console.log('Promotions table does not exist yet, will be created from schema.sql');
+      return;
+    }
+
+    // Check if min_order_count column exists - remove it if exists
+    const [orderCountCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'promotions' AND column_name = 'min_order_count'
+      `,
+      [DB_NAME]
+    );
+
+    if (orderCountCheck?.[0]?.count > 0) {
+      console.log('Removing min_order_count column from promotions table...');
+      try {
+        await connection.query(`ALTER TABLE promotions DROP COLUMN min_order_count`);
+        console.log('✓ Removed min_order_count column from promotions table');
+      } catch (error) {
+        if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
+          console.warn(`Warning removing min_order_count column: ${error.message}`);
+        }
+      }
+    }
+
+    // Check if type ENUM includes 'order_count' - need to update to only 'bill_amount'
+    const [typeCheck] = await connection.query(
+      `
+      SELECT COLUMN_TYPE
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'promotions' AND column_name = 'type'
+      `,
+      [DB_NAME]
+    );
+
+    if (typeCheck?.[0]?.COLUMN_TYPE && typeCheck[0].COLUMN_TYPE.includes('order_count')) {
+      console.log('Updating promotions.type ENUM to only allow bill_amount...');
+      try {
+        // First, delete any promotions with type 'order_count'
+        await connection.query(`DELETE FROM promotions WHERE type = 'order_count'`);
+        console.log('✓ Removed promotions with type order_count');
+        
+        // Update ENUM to only allow 'bill_amount'
+        await connection.query(`ALTER TABLE promotions MODIFY COLUMN type ENUM('bill_amount') NOT NULL DEFAULT 'bill_amount'`);
+        console.log('✓ Updated promotions.type ENUM to only allow bill_amount');
+      } catch (error) {
+        console.warn(`Warning updating promotions.type ENUM: ${error.message}`);
+      }
+    }
+
+    // Ensure min_bill_amount is NOT NULL
+    const [billAmountCheck] = await connection.query(
+      `
+      SELECT IS_NULLABLE, COLUMN_DEFAULT
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'promotions' AND column_name = 'min_bill_amount'
+      `,
+      [DB_NAME]
+    );
+
+    if (billAmountCheck?.[0] && billAmountCheck[0].IS_NULLABLE === 'YES') {
+      console.log('Updating min_bill_amount to NOT NULL...');
+      try {
+        // Set default value for existing NULL records
+        await connection.query(`UPDATE promotions SET min_bill_amount = 0 WHERE min_bill_amount IS NULL`);
+        await connection.query(`ALTER TABLE promotions MODIFY COLUMN min_bill_amount DECIMAL(10, 2) NOT NULL`);
+        console.log('✓ Updated min_bill_amount to NOT NULL');
+      } catch (error) {
+        console.warn(`Warning updating min_bill_amount: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error in ensurePromotionsColumns:', error.message);
+    // Don't throw - allow init to continue
+  }
+}
+
+async function ensureLoginAttemptsTable(connection) {
+  try {
+    // Check if login_attempts table exists
+    const [check] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = ? AND table_name = 'login_attempts'
+      `,
+      [DB_NAME]
+    );
+
+    if (check?.[0]?.count > 0) {
+      console.log('✓ Table login_attempts already exists');
+      
+      // Verify indexes exist
+      const indexes = [
+        { name: 'idx_phone', column: 'phone' },
+        { name: 'idx_ip', column: 'ip_address' },
+        { name: 'idx_created_at', column: 'created_at' }
+      ];
+      for (const idx of indexes) {
+        const [idxCheck] = await connection.query(
+          `
+          SELECT COUNT(*) as count
+          FROM information_schema.statistics
+          WHERE table_schema = ? AND table_name = 'login_attempts' AND index_name = ?
+          `,
+          [DB_NAME, idx.name]
+        );
+        
+        if (idxCheck?.[0]?.count === 0) {
+          try {
+            await connection.query(`CREATE INDEX ${idx.name} ON login_attempts(${idx.column})`);
+            console.log(`✓ Created index ${idx.name} on login_attempts`);
+          } catch (idxError) {
+            if (idxError.code !== 'ER_DUP_KEYNAME') {
+              console.warn(`Warning creating index ${idx.name}: ${idxError.message}`);
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    // Create table
+    console.log('Creating login_attempts table...');
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        phone VARCHAR(50),
+        ip_address VARCHAR(45),
+        success BOOLEAN NOT NULL DEFAULT false,
+        failure_reason TEXT,
+        user_agent TEXT,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_phone (phone),
+        INDEX idx_ip (ip_address),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    
+    console.log('✓ Created login_attempts table');
+    console.log('✓ Created indexes for login_attempts table');
+  } catch (error) {
+    if (error.code === 'ER_TABLE_EXISTS_ERROR' || error.code === 'ER_DUP_TABLE') {
+      console.log('✓ Table login_attempts already exists');
+    } else {
+      console.error('Error creating login_attempts table:', error.message);
+      // Don't throw - allow init to continue
+    }
   }
 }
 
@@ -475,9 +845,8 @@ async function ensureSchema() {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 description TEXT,
-                type ENUM('order_count', 'bill_amount') NOT NULL,
-                min_order_count INT DEFAULT NULL,
-                min_bill_amount DECIMAL(10, 2) DEFAULT NULL,
+                type ENUM('bill_amount') NOT NULL DEFAULT 'bill_amount',
+                min_bill_amount DECIMAL(10, 2) NOT NULL,
                 discount_type ENUM('percentage', 'fixed') NOT NULL,
                 discount_value DECIMAL(10, 2) NOT NULL,
                 max_discount_amount DECIMAL(10, 2) DEFAULT NULL,
@@ -532,6 +901,15 @@ async function ensureSchema() {
       // Ensure orders table has store_id and payment_method columns
       await ensureOrdersColumns(connection);
       
+      // Ensure settings table has store_id column
+      await ensureSettingsColumns(connection);
+      
+      // Ensure login_attempts table exists (for security logging)
+      await ensureLoginAttemptsTable(connection);
+      
+      // Ensure promotions table has correct structure (only bill_amount type, no min_order_count)
+      await ensurePromotionsColumns(connection);
+      
       await ensureIndexes(connection);
     } finally {
       connection.release();
@@ -542,29 +920,56 @@ async function ensureSchema() {
   }
 }
 
-// Create default admin user
+// Create default root admin user
+// Lưu ý: Admin thường (role='admin') không tự động có store/employer account/employee
+// Admin thường chỉ được quản lý bởi root admin, không xuất hiện trong danh sách stores/users/employees
 async function createDefaultAdmin() {
   try {
-    // Check if admin exists
-    const [rows] = await pool.query('SELECT id FROM users WHERE phone = ?', ['admin']);
-    const existing = rows[0] || null;
+    // Check if root admin already exists
+    const [rootRows] = await pool.query('SELECT id, name, phone, role FROM users WHERE role = ?', ['root']);
+    const existingRoot = rootRows[0] || null;
     
-    if (!existing) {
-      const password_hash = await hashPassword('admin123');
-      
-      await pool.query(`
-        INSERT INTO users (name, phone, password_hash, role, status)
-        VALUES (?, ?, ?, ?, ?)
-      `, ['Admin', 'admin', password_hash, 'admin', 'active']);
-      
-      console.log('Default admin created');
-      console.log('Phone: admin');
-      // Password removed from logs for security
-    } else {
-      console.log('Admin user already exists');
+    if (existingRoot) {
+      console.log('Root admin already exists:');
+      console.log(`  ID: ${existingRoot.id}`);
+      console.log(`  Name: ${existingRoot.name}`);
+      console.log(`  Phone: ${existingRoot.phone}`);
+      return;
     }
+
+    // Check if admin user with phone='admin' exists, convert it to root
+    const [adminRows] = await pool.query('SELECT id, name, phone, role FROM users WHERE phone = ?', ['admin']);
+    const existingAdmin = adminRows[0] || null;
+    
+    if (existingAdmin) {
+      if (existingAdmin.role !== 'root') {
+        console.log('Found existing admin user, converting to root...');
+        await pool.query('UPDATE users SET role = ? WHERE id = ?', ['root', existingAdmin.id]);
+        console.log('✅ Admin user converted to root admin!');
+        console.log(`  Phone: ${existingAdmin.phone}`);
+      } else {
+        console.log('Root admin already exists (phone: admin)');
+      }
+      return;
+    }
+
+    // Create new root admin user
+    // Root admin không có store_id, chỉ quản lý admin thường
+    const password_hash = await hashPassword('admin123');
+    
+    await pool.query(`
+      INSERT INTO users (name, phone, password_hash, role, status, store_id)
+      VALUES (?, ?, ?, ?, ?, NULL)
+    `, ['Root Admin', 'admin', password_hash, 'root', 'active']);
+    
+    console.log('✅ Root admin user created successfully!');
+    console.log('Phone: admin');
+    console.log('Password: admin123');
+    console.log('Note: Root admin không có store/employer account/employee');
+    // Password shown in init script for initial setup
   } catch (error) {
-    console.error('Error creating admin:', error);
+    console.error('Error creating root admin:', error);
+    // Don't throw - allow init to continue
   }
 }
 
@@ -579,9 +984,16 @@ async function createSampleProducts() {
       { name: 'Ủi', unit: 'cai', price: 10000, eta_minutes: 30 }
     ];
 
-    const [adminRows] = await pool.query('SELECT id FROM users WHERE role = ? LIMIT 1', ['admin']);
-    const admin = adminRows[0] || null;
-    const adminId = admin ? admin.id : 1;
+    // Find root admin first, then fallback to admin, then use id=1
+    const [rootRows] = await pool.query('SELECT id FROM users WHERE role = ? LIMIT 1', ['root']);
+    const root = rootRows[0] || null;
+    let adminId = root ? root.id : null;
+    
+    if (!adminId) {
+      const [adminRows] = await pool.query('SELECT id FROM users WHERE role = ? LIMIT 1', ['admin']);
+      const admin = adminRows[0] || null;
+      adminId = admin ? admin.id : 1;
+    }
 
     for (const product of products) {
       const [existingRows] = await pool.query('SELECT id FROM products WHERE name = ?', [product.name]);
@@ -610,11 +1022,15 @@ async function createSampleProducts() {
 
 // Main initialization
 async function init() {
+  let tempConnection = null;
   try {
+    console.log('========================================');
     console.log('Initializing database...');
+    console.log(`Database: ${DB_NAME}`);
+    console.log('========================================\n');
     
     // Ensure database exists
-    const tempConnection = await mysql.createConnection({
+    tempConnection = await mysql.createConnection({
       host: process.env.MYSQL_HOST || 'localhost',
       port: process.env.MYSQL_PORT || 3306,
       user: process.env.MYSQL_USER || 'root',
@@ -623,24 +1039,46 @@ async function init() {
     
     const dbName = process.env.MYSQL_DATABASE || 'laundry66';
     await tempConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    console.log(`✓ Database '${dbName}' ready\n`);
     await tempConnection.end();
+    tempConnection = null;
     
     // Ensure schema is created
     await ensureSchema();
     
-    // Wait a bit to ensure schema is fully created
+    // Wait a bit to ensure schema is fully created and all constraints are applied
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Create default admin and sample data
     await createDefaultAdmin();
     await createSampleProducts();
     
-    console.log('Database initialization complete!');
+    console.log('\n========================================');
+    console.log('✅ Database initialization complete!');
+    console.log('========================================');
     await pool.end();
     process.exit(0);
   } catch (error) {
-    console.error('Initialization failed:', error);
-    await pool.end();
+    console.error('\n========================================');
+    console.error('❌ Initialization failed:');
+    console.error('========================================');
+    console.error(error);
+    if (error.stack) {
+      console.error('\nStack trace:');
+      console.error(error.stack);
+    }
+    if (tempConnection) {
+      try {
+        await tempConnection.end();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
+    try {
+      await pool.end();
+    } catch (e) {
+      // Ignore cleanup errors
+    }
     process.exit(1);
   }
 }

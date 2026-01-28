@@ -2,7 +2,7 @@ import express from 'express';
 import { query, queryOne, execute, transaction } from '../database/db.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
-import { validateRequiredString, sanitizeString, isValidPhone } from '../utils/validators.js';
+import { validateRequiredString, sanitizeString } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -105,9 +105,6 @@ router.post('/', async (req, res) => {
     let phoneValue = null;
     if (phone !== undefined && phone !== null && phone !== '') {
       const phoneSanitized = sanitizeString(phone);
-      if (phoneSanitized.value && !isValidPhone(phoneSanitized.value)) {
-        return res.status(400).json({ error: 'Số điện thoại không đúng định dạng' });
-      }
       phoneValue = phoneSanitized.value || null;
     }
 
@@ -179,9 +176,6 @@ router.patch('/:id', async (req, res) => {
       let phoneValue = null;
       if (phone !== null && phone !== '') {
         const phoneSanitized = sanitizeString(phone);
-        if (phoneSanitized.value && !isValidPhone(phoneSanitized.value)) {
-          return res.status(400).json({ error: 'Số điện thoại không đúng định dạng' });
-        }
         phoneValue = phoneSanitized.value || null;
       }
       updates.push('phone = ?');

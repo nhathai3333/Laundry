@@ -15,8 +15,7 @@ function Promotions() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    type: 'order_count',
-    min_order_count: '',
+    type: 'bill_amount',
     min_bill_amount: '',
     discount_type: 'percentage',
     discount_value: '',
@@ -99,12 +98,7 @@ function Promotions() {
       return;
     }
 
-    if (formData.type === 'order_count' && !formData.min_order_count) {
-      alert('Vui lòng nhập số lần đặt hàng tối thiểu');
-      return;
-    }
-
-    if (formData.type === 'bill_amount' && !formData.min_bill_amount) {
+    if (!formData.min_bill_amount) {
       alert('Vui lòng nhập giá trị đơn hàng tối thiểu');
       return;
     }
@@ -122,8 +116,8 @@ function Promotions() {
     try {
       const submitData = {
         ...formData,
-        min_order_count: formData.type === 'order_count' ? parseInt(formData.min_order_count) : null,
-        min_bill_amount: formData.type === 'bill_amount' ? parseFloat(formData.min_bill_amount) : null,
+        type: 'bill_amount',
+        min_bill_amount: parseFloat(formData.min_bill_amount),
         discount_value: parseFloat(formData.discount_value),
         max_discount_amount: formData.max_discount_amount ? parseFloat(formData.max_discount_amount) : null,
       };
@@ -160,8 +154,7 @@ function Promotions() {
     setFormData({
       name: promotion.name || '',
       description: promotion.description || '',
-      type: promotion.type || 'order_count',
-      min_order_count: promotion.min_order_count || '',
+      type: 'bill_amount',
       min_bill_amount: promotion.min_bill_amount || '',
       discount_type: promotion.discount_type || 'percentage',
       discount_value: promotion.discount_value || '',
@@ -201,8 +194,7 @@ function Promotions() {
     setFormData({
       name: '',
       description: '',
-      type: 'order_count',
-      min_order_count: '',
+      type: 'bill_amount',
       min_bill_amount: '',
       discount_type: 'percentage',
       discount_value: '',
@@ -288,16 +280,6 @@ function Promotions() {
             }`}
           >
             Tất cả
-          </button>
-          <button
-            onClick={() => setFilterType('order_count')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              filterType === 'order_count'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Theo số lần đặt hàng
           </button>
           <button
             onClick={() => setFilterType('bill_amount')}
@@ -475,49 +457,18 @@ function Promotions() {
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Loại khuyến mãi *
+                  Giá trị đơn hàng tối thiểu (đ) *
                 </label>
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value, min_order_count: '', min_bill_amount: '' })}
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={formData.min_bill_amount}
+                  onChange={(e) => setFormData({ ...formData, min_bill_amount: e.target.value })}
                   className="w-full px-3 py-2.5 border rounded-lg text-base"
                   required
-                >
-                  <option value="order_count">Theo số lần đặt hàng</option>
-                  <option value="bill_amount">Theo giá trị đơn hàng</option>
-                </select>
+                />
               </div>
-              {formData.type === 'order_count' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Số lần đặt hàng tối thiểu *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={formData.min_order_count}
-                    onChange={(e) => setFormData({ ...formData, min_order_count: e.target.value })}
-                    className="w-full px-3 py-2.5 border rounded-lg text-base"
-                    required={formData.type === 'order_count'}
-                  />
-                </div>
-              )}
-              {formData.type === 'bill_amount' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Giá trị đơn hàng tối thiểu (đ) *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={formData.min_bill_amount}
-                    onChange={(e) => setFormData({ ...formData, min_bill_amount: e.target.value })}
-                    className="w-full px-3 py-2.5 border rounded-lg text-base"
-                    required={formData.type === 'bill_amount'}
-                  />
-                </div>
-              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Loại giảm giá *

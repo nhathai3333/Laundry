@@ -101,12 +101,21 @@ function Login() {
       
       setAuth(token, user);
 
+      // Debug: Log user info để kiểm tra role
+      console.log('Store selection successful - User:', user);
+      console.log('User role:', user?.role);
+      console.log('isRoot():', isRoot());
+      console.log('isAdmin():', isAdmin());
+
       // Root admin chỉ có thể truy cập Dashboard và Admin Management
       if (isRoot()) {
+        console.log('Redirecting root admin to /admin');
         navigate('/admin');
       } else if (isAdmin()) {
+        console.log('Redirecting admin to /admin');
         navigate('/admin');
       } else {
+        console.log('Redirecting employer to /');
         navigate('/');
       }
     } catch (err) {

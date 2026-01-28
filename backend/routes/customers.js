@@ -1,7 +1,7 @@
 import express from 'express';
 import { query, queryOne, execute } from '../database/db.js';
 import { authenticate } from '../middleware/auth.js';
-import { isValidPhone, sanitizeString, validateRequiredString } from '../utils/validators.js';
+import { sanitizeString, validateRequiredString } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -176,10 +176,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: phoneValidation.error });
     }
 
-    if (!isValidPhone(phoneValidation.value)) {
-      return res.status(400).json({ error: 'Số điện thoại không đúng định dạng' });
-    }
-
     // Sanitize name and note
     const nameSanitized = sanitizeString(name);
     const noteSanitized = sanitizeString(note);
@@ -255,10 +251,6 @@ router.patch('/:id', async (req, res) => {
       const phoneValidation = validateRequiredString(phone, 'Số điện thoại');
       if (!phoneValidation.valid) {
         return res.status(400).json({ error: phoneValidation.error });
-      }
-      
-      if (!isValidPhone(phoneValidation.value)) {
-        return res.status(400).json({ error: 'Số điện thoại không đúng định dạng' });
       }
       
       // Check phone uniqueness (except current customer)

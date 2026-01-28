@@ -2,7 +2,7 @@ import express from 'express';
 import { query, queryOne, execute } from '../database/db.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { auditLog } from '../middleware/audit.js';
-import { validatePositiveNumber, validatePositiveInteger, validateEnum, validateDateRange, sanitizeString } from '../utils/validators.js';
+import { validatePositiveNumber, validatePositiveInteger, validateEnum, validateDateRange, sanitizeString, validateRequiredString } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -134,9 +134,10 @@ router.post('/', authorize('admin'), auditLog('create', 'promotion'), async (req
       return res.status(400).json({ error: nameValidation.error });
     }
 
-    const typeValidation = validateEnum(type, ['order_count', 'bill_amount'], 'Loại khuyến mãi');
+    // Chỉ hỗ trợ khuyến mãi theo giá trị đơn hàng
+    const typeValidation = validateEnum(type, ['bill_amount'], 'Loại khuyến mãi');
     if (!typeValidation.valid) {
-      return res.status(400).json({ error: typeValidation.error });
+      return res.status(400).json({ error: 'Chỉ hỗ trợ khuyến mãi theo giá trị đơn hàng' });
     }
 
     const discountTypeValidation = validateEnum(discount_type, ['percentage', 'fixed'], 'Loại giảm giá');
@@ -155,25 +156,13 @@ router.post('/', authorize('admin'), auditLog('create', 'promotion'), async (req
       return res.status(400).json({ error: 'Phần trăm giảm giá không được vượt quá 100%' });
     }
 
-    // Validate type-specific fields
-    if (type === 'order_count') {
-      if (!min_order_count) {
-        return res.status(400).json({ error: 'Số lần đặt hàng tối thiểu là bắt buộc' });
-      }
-      const minOrderCountValidation = validatePositiveInteger(min_order_count, false);
-      if (!minOrderCountValidation.valid) {
-        return res.status(400).json({ error: `Số lần đặt hàng tối thiểu: ${minOrderCountValidation.error}` });
-      }
+    // Validate type-specific fields - chỉ hỗ trợ bill_amount
+    if (min_bill_amount === undefined || min_bill_amount === null || min_bill_amount === '') {
+      return res.status(400).json({ error: 'Giá trị đơn hàng tối thiểu là bắt buộc' });
     }
-
-    if (type === 'bill_amount') {
-      if (!min_bill_amount) {
-        return res.status(400).json({ error: 'Giá trị đơn hàng tối thiểu là bắt buộc' });
-      }
-      const minBillAmountValidation = validatePositiveNumber(min_bill_amount, false);
-      if (!minBillAmountValidation.valid) {
-        return res.status(400).json({ error: `Giá trị đơn hàng tối thiểu: ${minBillAmountValidation.error}` });
-      }
+    const minBillAmountValidation = validatePositiveNumber(min_bill_amount, false);
+    if (!minBillAmountValidation.valid) {
+      return res.status(400).json({ error: `Giá trị đơn hàng tối thiểu: ${minBillAmountValidation.error}` });
     }
 
     // Validate dates
@@ -223,17 +212,16 @@ router.post('/', authorize('admin'), auditLog('create', 'promotion'), async (req
 
     const result = await execute(`
       INSERT INTO promotions (
-        name, description, type, min_order_count, min_bill_amount,
+        name, description, type, min_bill_amount,
         discount_type, discount_value, max_discount_amount,
         start_date, end_date, status, created_by, store_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       nameValidation.value,
       descriptionSanitized.value || null,
-      typeValidation.value,
-      type === 'order_count' ? parseInt(min_order_count) : null,
-      type === 'bill_amount' ? parseFloat(min_bill_amount) : null,
+      'bill_amount',
+      minBillAmountValidation.value,
       discountTypeValidation.value,
       discountValueValidation.value,
       maxDiscountAmount,
@@ -254,7 +242,16 @@ router.post('/', authorize('admin'), auditLog('create', 'promotion'), async (req
     res.status(201).json({ data: newPromotion });
   } catch (error) {
     console.error('Create promotion error:', error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      sql: error.sql,
+      sqlMessage: error.sqlMessage
+    });
+    res.status(500).json({ 
+      error: 'Server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -309,27 +306,8 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'promotion'), async 
       values.push(descSanitized.value || null);
     }
     
-    if (type !== undefined) {
-      const typeValidation = validateEnum(type, ['order_count', 'bill_amount'], 'Loại khuyến mãi');
-      if (!typeValidation.valid) {
-        return res.status(400).json({ error: typeValidation.error });
-      }
-      updates.push('type = ?');
-      values.push(typeValidation.value);
-    }
-    if (min_order_count !== undefined) {
-      if (min_order_count === null || min_order_count === '') {
-        updates.push('min_order_count = ?');
-        values.push(null);
-      } else {
-        const validation = validatePositiveInteger(min_order_count, false);
-        if (!validation.valid) {
-          return res.status(400).json({ error: `Số lần đặt hàng tối thiểu: ${validation.error}` });
-        }
-        updates.push('min_order_count = ?');
-        values.push(validation.value);
-      }
-    }
+    // Type luôn là 'bill_amount', không cho phép thay đổi
+    // Không còn hỗ trợ min_order_count
     
     if (min_bill_amount !== undefined) {
       if (min_bill_amount === null || min_bill_amount === '') {
@@ -521,12 +499,10 @@ router.post('/applicable', async (req, res) => {
       WHERE p.status = 'active'
         AND DATE(p.start_date) <= ?
         AND DATE(p.end_date) >= ?
-        AND (
-          (p.type = 'order_count' AND p.min_order_count <= ?)
-          OR (p.type = 'bill_amount' AND p.min_bill_amount <= ?)
-        )
+        AND p.type = 'bill_amount'
+        AND p.min_bill_amount <= ?
     `;
-    const params = [now, now, orderCount, bill_amount || 0];
+    const params = [now, now, bill_amount || 0];
 
     // Determine effective store filter to prevent cross-store data leakage
     let effectiveStoreId = null;
@@ -559,11 +535,7 @@ router.post('/applicable', async (req, res) => {
       querySql += ' AND p.store_id IS NULL';
     }
 
-    querySql += ` ORDER BY 
-      CASE p.type
-        WHEN 'order_count' THEN p.min_order_count
-        WHEN 'bill_amount' THEN p.min_bill_amount
-      END DESC`;
+    querySql += ` ORDER BY p.min_bill_amount DESC`;
 
     const promotions = await query(querySql, params);
 

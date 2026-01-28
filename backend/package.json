@@ -12,7 +12,10 @@
     "create-root-admin": "node scripts/create_root_admin.js",
     "migrate-promotions": "node scripts/add_store_id_to_promotions.js",
     "migrate-orders": "node scripts/add_orders_columns.js",
-    "migrate-products": "node scripts/add_store_id_to_products.js"
+    "migrate-products": "node scripts/add_store_id_to_products.js",
+    "migrate-login-attempts": "node scripts/create_login_attempts_table.js",
+    "migrate-settings": "node scripts/add_store_id_to_settings.js",
+    "update-to-root": "node scripts/update_user_to_root.js"
   },
   "keywords": [
     "laundry",
