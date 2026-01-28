@@ -117,22 +117,18 @@ function AdminManagement() {
 
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.phone || !formData.password) {
-      alert('Vui lòng điền đầy đủ thông tin bắt buộc (Tên, SĐT, Mật khẩu)');
+    if (!formData.name || !formData.password) {
+      alert('Vui lòng điền đầy đủ thông tin bắt buộc (Tên, Mật khẩu)');
       return;
     }
 
-    // Trim phone number
-    const phone = formData.phone.trim();
-    if (!phone) {
-      alert('Vui lòng nhập số điện thoại hợp lệ');
-      return;
-    }
+    // Phone không bắt buộc cho admin, chỉ trim nếu có
+    const phone = formData.phone ? formData.phone.trim() : '';
 
     try {
       const submitData = {
         name: formData.name.trim(),
-        phone: phone,
+        phone: phone || null, // Cho phép null nếu không có phone
         password: formData.password,
         role: 'admin',
       };
@@ -178,16 +174,12 @@ function AdminManagement() {
     e.preventDefault();
     if (!selectedAdmin) return;
 
-    // Validate phone number format (basic check)
-    if (!editFormData.phone || editFormData.phone.trim() === '') {
-      alert('Vui lòng nhập số điện thoại');
-      return;
-    }
+    // Phone không bắt buộc cho admin
 
     try {
       const updateData = {
         name: editFormData.name,
-        phone: editFormData.phone.trim(),
+        phone: editFormData.phone ? editFormData.phone.trim() : null, // Cho phép null nếu không có phone
       };
 
       // Only include password if provided

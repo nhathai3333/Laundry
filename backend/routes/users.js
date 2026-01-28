@@ -98,21 +98,26 @@ router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.bod
   try {
     const { name, phone, password, role, started_at, status, hourly_rate, shift_rate, store_id } = req.body;
 
-    if (!name || !phone || !password || !role) {
-      return res.status(400).json({ error: 'Name, phone, password, and role are required' });
+    if (!name || !password || !role) {
+      return res.status(400).json({ error: 'Name, password, and role are required' });
     }
 
-    // Validate phone
-    const phoneValidation = validateRequiredString(phone, 'Số điện thoại');
-    if (!phoneValidation.valid) {
-      return res.status(400).json({ error: phoneValidation.error });
+    // Phone validation - không bắt buộc cho admin, chỉ check duplicate nếu có
+    let phoneValue = phone ? phone.trim() : '';
+    
+    // Nếu role là admin, phone có thể để trống
+    if (role !== 'admin' && !phoneValue) {
+      return res.status(400).json({ error: 'Số điện thoại là bắt buộc' });
     }
     
-    const existing = await queryOne('SELECT id, name, role FROM users WHERE phone = ?', [phoneValidation.value]);
-    if (existing) {
-      return res.status(400).json({ 
-        error: `Số điện thoại "${trimmedPhone}" đã được sử dụng bởi ${existing.name} (${existing.role})` 
-      });
+    // Check duplicate phone chỉ khi phone được cung cấp
+    if (phoneValue) {
+      const existing = await queryOne('SELECT id, name, role FROM users WHERE phone = ?', [phoneValue]);
+      if (existing) {
+        return res.status(400).json({ 
+          error: `Số điện thoại "${phoneValue}" đã được sử dụng bởi ${existing.name} (${existing.role})` 
+        });
+      }
     }
 
     // Only root can create admin users
@@ -186,7 +191,7 @@ router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.bod
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       nameSanitized.value,
-      phoneValidation.value,
+      phoneValue || null,
       password_hash,
       role,
       started_at || null,
@@ -226,17 +231,21 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
     }
 
     // Check if phone exists (if changed)
+    // Không bắt buộc phone cho admin, chỉ check duplicate nếu có
     if (phone !== undefined) {
-      const phoneValidation = validateRequiredString(phone, 'Số điện thoại');
-      if (!phoneValidation.valid) {
-        return res.status(400).json({ error: phoneValidation.error });
+      const trimmedPhone = phone ? phone.trim() : '';
+      
+      // Nếu role là admin, phone có thể để trống
+      if (oldUser.role !== 'admin' && !trimmedPhone) {
+        return res.status(400).json({ error: 'Số điện thoại là bắt buộc' });
       }
-
-      if (phoneValidation.value !== oldUser.phone) {
-        const existing = await queryOne('SELECT id, name, role FROM users WHERE phone = ?', [phoneValidation.value]);
+      
+      // Check duplicate chỉ khi phone được cung cấp và khác với phone hiện tại
+      if (trimmedPhone && trimmedPhone !== oldUser.phone) {
+        const existing = await queryOne('SELECT id, name, role FROM users WHERE phone = ?', [trimmedPhone]);
         if (existing) {
           return res.status(400).json({ 
-            error: `Số điện thoại "${phoneValidation.value}" đã được sử dụng bởi ${existing.name} (${existing.role})` 
+            error: `Số điện thoại "${trimmedPhone}" đã được sử dụng bởi ${existing.name} (${existing.role})` 
           });
         }
       }
@@ -247,12 +256,15 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
 
     if (name !== undefined) { updates.push('name = ?'); values.push(name.trim()); }
     if (phone !== undefined) { 
-      const trimmedPhone = phone.trim();
-      if (!trimmedPhone) {
+      const trimmedPhone = phone ? phone.trim() : '';
+      
+      // Nếu role là admin, phone có thể để trống
+      if (oldUser.role !== 'admin' && !trimmedPhone) {
         return res.status(400).json({ error: 'Số điện thoại không được để trống' });
       }
+      
       updates.push('phone = ?'); 
-      values.push(trimmedPhone); 
+      values.push(trimmedPhone || null); 
     }
     if (role !== undefined) { updates.push('role = ?'); values.push(role); }
     if (started_at !== undefined) { 
