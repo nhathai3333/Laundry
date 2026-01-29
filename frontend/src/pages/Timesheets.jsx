@@ -1029,7 +1029,7 @@ function Timesheets() {
                 {timesheets.length > 0 && (
                   <tfoot className="bg-gray-50 font-semibold">
                     <tr>
-                      <td colSpan="4" className="px-4 py-3 text-gray-800">Tổng cộng</td>
+                      <td colSpan="5" className="px-4 py-3 text-gray-800">Tổng cộng</td>
                       <td className="px-4 py-3 text-right text-gray-800">
                         {timesheets.reduce((sum, t) => sum + (parseFloat(t.regular_hours) || 0), 0).toFixed(2)}h
                       </td>

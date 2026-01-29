@@ -23,7 +23,7 @@ function EmployerHome() {
   
   const [formData, setFormData] = useState({
     customer_name: '',
-    customer_phone: '',
+    customer_phone: '0',
     items: [{ product_id: '', quantity: '' }],
     note: '',
     promotion_id: '',
@@ -276,7 +276,7 @@ function EmployerHome() {
       setShowModal(false);
       setFormData({
         customer_name: '',
-        customer_phone: '',
+        customer_phone: '0',
         items: [{ product_id: '', quantity: '' }],
         note: '',
         promotion_id: '',
@@ -771,7 +771,7 @@ function EmployerHome() {
                     setShowModal(false);
                     setFormData({
                       customer_name: '',
-                      customer_phone: '',
+                      customer_phone: '0',
                       items: [{ product_id: '', quantity: '' }],
                       note: '',
                       promotion_id: '',

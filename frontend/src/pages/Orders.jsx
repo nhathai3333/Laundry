@@ -26,7 +26,7 @@ function Orders() {
   });
   const [formData, setFormData] = useState({
     customer_name: '',
-    customer_phone: '',
+    customer_phone: '0',
     items: [{ product_id: '', quantity: '' }],
     note: '',
     assigned_to: '',
@@ -374,7 +374,7 @@ function Orders() {
       setShowModal(false);
       setFormData({
         customer_name: '',
-        customer_phone: '',
+        customer_phone: '0',
         items: [{ product_id: '', quantity: '' }],
         note: '',
         assigned_to: '',
@@ -824,7 +824,7 @@ function Orders() {
                   setShowModal(false);
                   setFormData({
                     customer_name: '',
-                    customer_phone: '',
+                    customer_phone: '0',
                     items: [{ product_id: '', quantity: '' }],
                     note: '',
                     assigned_to: '',
@@ -1100,7 +1100,7 @@ function Orders() {
                     setShowModal(false);
                     setFormData({
                       customer_name: '',
-                      customer_phone: '',
+                      customer_phone: '0',
                       items: [{ product_id: '', quantity: '' }],
                       note: '',
                       assigned_to: '',
