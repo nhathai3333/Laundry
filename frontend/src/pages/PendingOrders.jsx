@@ -81,6 +81,18 @@ function PendingOrders() {
     }
   };
 
+  const handleCompleteAsDebt = async (order) => {
+    if (!confirm(`Chuyển đơn ${order.code} sang ghi nợ? Đơn sẽ không tính doanh thu cho đến khi nhân viên bấm "Đã thanh toán" trong menu Ghi nợ.`)) return;
+    try {
+      await api.post(`/orders/${order.id}/status`, { status: 'completed' });
+      await api.patch(`/orders/${order.id}/debt`);
+      loadPendingOrders();
+      alert('Đã chuyển đơn sang Ghi nợ. Vào menu Ghi nợ để thanh toán khi khách trả.');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Thao tác thất bại');
+    }
+  };
+
   const statusColors = {
     created: 'bg-yellow-100 text-yellow-800',
     washing: 'bg-blue-100 text-blue-800',
@@ -207,33 +219,12 @@ function PendingOrders() {
                     >
                       ✓ Hoàn thành
                     </button>
-                    {order.status === 'created' && (
-                      <button
-                        onClick={() => handleStatusChange(order.id, 'washing')}
-                        className="px-2.5 py-1.5 bg-blue-500 text-white rounded-lg active:bg-blue-600 hover:bg-blue-600 transition-colors text-xs touch-manipulation"
-                        title="Đang giặt"
-                      >
-                        🧺
-                      </button>
-                    )}
-                    {order.status === 'washing' && (
-                      <button
-                        onClick={() => handleStatusChange(order.id, 'drying')}
-                        className="px-2.5 py-1.5 bg-purple-500 text-white rounded-lg active:bg-purple-600 hover:bg-purple-600 transition-colors text-xs touch-manipulation"
-                        title="Đang sấy"
-                      >
-                        🔥
-                      </button>
-                    )}
-                    {order.status === 'drying' && (
-                      <button
-                        onClick={() => handleStatusChange(order.id, 'waiting_pickup')}
-                        className="px-2.5 py-1.5 bg-orange-500 text-white rounded-lg active:bg-orange-600 hover:bg-orange-600 transition-colors text-xs touch-manipulation"
-                        title="Chờ lấy"
-                      >
-                        📦
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleCompleteAsDebt(order)}
+                      className="px-3 py-1.5 bg-amber-500 text-white rounded-lg active:bg-amber-600 hover:bg-amber-600 transition-colors text-xs sm:text-sm font-medium touch-manipulation shadow-sm"
+                    >
+                      Ghi nợ
+                    </button>
                     <button
                       onClick={() => handleStatusChange(order.id, 'cancelled')}
                       className="px-2.5 py-1.5 bg-red-500 text-white rounded-lg active:bg-red-600 hover:bg-red-600 transition-colors text-xs touch-manipulation"

@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS orders (
     promotion_id INT,
     store_id INT,
     payment_method ENUM('cash', 'transfer') DEFAULT NULL,
+    is_debt TINYINT(1) NOT NULL DEFAULT 0,
+    debt_paid_at DATETIME DEFAULT NULL,
     created_by INT NOT NULL,
     updated_by INT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -88,11 +88,12 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
     if (period === 'day') {
       querySql = `
         SELECT 
-          DATE(o.updated_at) as period,
+          DATE(COALESCE(o.debt_paid_at, o.updated_at)) as period,
           SUM(o.final_amount) as total_revenue,
           COUNT(*) as total_orders
         FROM orders o
         WHERE o.status = 'completed'
+          AND (o.is_debt = 0 OR o.is_debt IS NULL OR o.debt_paid_at IS NOT NULL)
       `;
       params = [];
       
@@ -122,15 +123,16 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
       }
       // If admin without store_id filter, show all (no additional filter)
       
-      groupBy = 'DATE(o.updated_at)';
+      groupBy = 'DATE(COALESCE(o.debt_paid_at, o.updated_at))';
     } else if (period === 'month') {
       querySql = `
         SELECT 
-          DATE_FORMAT(o.updated_at, '%Y-%m') as period,
+          DATE_FORMAT(COALESCE(o.debt_paid_at, o.updated_at), '%Y-%m') as period,
           SUM(o.final_amount) as total_revenue,
           COUNT(*) as total_orders
         FROM orders o
         WHERE o.status = 'completed'
+          AND (o.is_debt = 0 OR o.is_debt IS NULL OR o.debt_paid_at IS NOT NULL)
       `;
       params = [];
       
@@ -160,15 +162,16 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
       }
       // If admin without store_id filter, show all (no additional filter)
       
-      groupBy = 'DATE_FORMAT(o.updated_at, "%Y-%m")';
+      groupBy = 'DATE_FORMAT(COALESCE(o.debt_paid_at, o.updated_at), "%Y-%m")';
     } else {
       querySql = `
         SELECT 
-          DATE_FORMAT(o.updated_at, '%Y') as period,
+          DATE_FORMAT(COALESCE(o.debt_paid_at, o.updated_at), '%Y') as period,
           SUM(o.final_amount) as total_revenue,
           COUNT(*) as total_orders
         FROM orders o
         WHERE o.status = 'completed'
+          AND (o.is_debt = 0 OR o.is_debt IS NULL OR o.debt_paid_at IS NOT NULL)
       `;
       params = [];
       
@@ -198,11 +201,11 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
       }
       // If admin without store_id filter, show all (no additional filter)
       
-      groupBy = 'DATE_FORMAT(o.updated_at, "%Y")';
+      groupBy = 'DATE_FORMAT(COALESCE(o.debt_paid_at, o.updated_at), "%Y")';
     }
 
     if (start_date && end_date) {
-      querySql += ' AND DATE(o.updated_at) >= ? AND DATE(o.updated_at) <= ?';
+      querySql += ' AND DATE(COALESCE(o.debt_paid_at, o.updated_at)) >= ? AND DATE(COALESCE(o.debt_paid_at, o.updated_at)) <= ?';
       params.push(start_date, end_date);
     }
 

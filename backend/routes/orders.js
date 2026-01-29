@@ -13,7 +13,7 @@ router.use(authenticate);
 // Get all orders
 router.get('/', async (req, res) => {
   try {
-    const { status, assigned_to, customer_phone, my_orders, date, store_id } = req.query;
+    const { status, assigned_to, customer_phone, my_orders, date, store_id, debt_only } = req.query;
     let querySql = `
       SELECT o.*, 
         c.name as customer_name, 
@@ -106,6 +106,13 @@ router.get('/', async (req, res) => {
     if (date) {
       querySql += ' AND DATE(o.created_at) = ?';
       params.push(date);
+    }
+
+    // Ghi nợ: debt_only=1 => chỉ đơn ghi nợ (is_debt=1); mặc định loại trừ đơn ghi nợ chưa trả
+    if (debt_only === '1' || debt_only === 'true') {
+      querySql += ' AND o.is_debt = 1';
+    } else {
+      querySql += ' AND (o.is_debt = 0 OR o.is_debt IS NULL)';
     }
 
     // Filter by date range (for month view)
@@ -658,6 +665,64 @@ router.post('/:id/status', async (req, res) => {
     res.json({ data: { ...updatedOrder, items: orderItems } });
   } catch (error) {
     console.error('Update order status error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Mark order as debt (ghi nợ) - only completed orders, employer/admin
+router.patch('/:id/debt', async (req, res) => {
+  try {
+    const order = await queryOne('SELECT id, status, is_debt, store_id, assigned_to, created_by FROM orders WHERE id = ?', [req.params.id]);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.status !== 'completed') {
+      return res.status(400).json({ error: 'Chỉ đơn hàng đã hoàn thành mới có thể ghi nợ' });
+    }
+    if (order.is_debt === 1) {
+      return res.status(400).json({ error: 'Đơn hàng đã ở trạng thái ghi nợ' });
+    }
+    // Employer: only own store; admin: store in chain
+    if (req.user.role === 'employer') {
+      if (req.user.store_id && order.store_id !== req.user.store_id) {
+        return res.status(403).json({ error: 'Bạn không có quyền ghi nợ đơn hàng này' });
+      }
+      if (!req.user.store_id && order.assigned_to !== req.user.id && order.created_by !== req.user.id) {
+        return res.status(403).json({ error: 'Bạn không có quyền ghi nợ đơn hàng này' });
+      }
+    }
+    await execute('UPDATE orders SET is_debt = 1, debt_paid_at = NULL WHERE id = ?', [req.params.id]);
+    const updated = await queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    res.json({ data: updated });
+  } catch (error) {
+    console.error('Mark order debt error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Mark debt as paid (đã thanh toán) - employer/admin
+router.patch('/:id/debt/paid', async (req, res) => {
+  try {
+    const order = await queryOne('SELECT id, status, is_debt, store_id, assigned_to, created_by FROM orders WHERE id = ?', [req.params.id]);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.is_debt !== 1) {
+      return res.status(400).json({ error: 'Đơn hàng không ở trạng thái ghi nợ' });
+    }
+    if (req.user.role === 'employer') {
+      if (req.user.store_id && order.store_id !== req.user.store_id) {
+        return res.status(403).json({ error: 'Bạn không có quyền thao tác đơn hàng này' });
+      }
+      if (!req.user.store_id && order.assigned_to !== req.user.id && order.created_by !== req.user.id) {
+        return res.status(403).json({ error: 'Bạn không có quyền thao tác đơn hàng này' });
+      }
+    }
+    await execute('UPDATE orders SET is_debt = 0, debt_paid_at = NOW() WHERE id = ?', [req.params.id]);
+    const updated = await queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    res.json({ data: updated });
+  } catch (error) {
+    console.error('Mark debt paid error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

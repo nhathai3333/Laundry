@@ -12,11 +12,14 @@ function EmployerLayout() {
   };
 
   const navItems = [
-    { path: '/', label: 'Trang chủ', icon: '🏠' },
+    { path: '/', label: 'Trang chủ', icon: '🏠', getIsActive: (loc) => loc.pathname === '/' && !loc.search.includes('tab=debt') },
     { path: '/pending-orders', label: 'Tồn kho', icon: '📋' },
+    { path: '/?tab=debt', label: 'Ghi nợ', icon: '📝', getIsActive: (loc) => loc.pathname === '/' && loc.search.includes('tab=debt') },
     { path: '/customers', label: 'Khách hàng', icon: '👤' },
     { path: '/timesheets', label: 'Chấm công', icon: '⏰' },
   ];
+
+  const isActive = (item) => item.getIsActive ? item.getIsActive(location) : location.pathname === item.path;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -46,10 +49,10 @@ function EmployerLayout() {
             <div className="flex gap-2 overflow-x-auto">
               {navItems.map((item) => (
                 <Link
-                  key={item.path}
+                  key={item.path + (item.label || '')}
                   to={item.path}
                   className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200 group ${
-                    location.pathname === item.path
+                    isActive(item)
                       ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105'
                       : 'text-gray-700 hover:bg-gray-100 hover:shadow-md hover:transform hover:scale-105 bg-white'
                   }`}
@@ -75,17 +78,17 @@ function EmployerLayout() {
         <div className="flex justify-around py-1">
           {navItems.map((item) => (
             <Link
-              key={item.path}
+              key={item.path + (item.label || '')}
               to={item.path}
               className={`flex flex-col items-center py-2 px-3 flex-1 min-w-0 rounded-xl mx-1 transition-all active:scale-95 ${
-                location.pathname === item.path 
+                isActive(item)
                   ? 'text-blue-600 bg-blue-50 transform scale-105' 
                   : 'text-gray-600 hover:text-blue-600 active:bg-gray-50'
               }`}
             >
-              <span className={`text-2xl mb-1 transition-transform ${location.pathname === item.path ? 'scale-110' : ''}`}>{item.icon}</span>
+              <span className={`text-2xl mb-1 transition-transform ${isActive(item) ? 'scale-110' : ''}`}>{item.icon}</span>
               <span className="text-[10px] font-medium truncate w-full text-center">{item.label}</span>
-              {location.pathname === item.path && (
+              {isActive(item) && (
                 <span className="absolute top-0 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-blue-600 rounded-b-full"></span>
               )}
             </Link>

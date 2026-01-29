@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { isAdmin, isRoot } from '../utils/auth';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { getSavedFilters, saveFilters } from '../utils/filterStorage';
 
 function Dashboard() {
@@ -11,12 +11,15 @@ function Dashboard() {
     todayOrders: 0,
     totalCustomers: 0,
     activeOrders: 0,
+    debtOrders: 0,
   });
   const [revenueByStore, setRevenueByStore] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stores, setStores] = useState([]);
   // Lazy init to avoid reading localStorage on every render
   const [selectedStoreId, setSelectedStoreId] = useState(() => getSavedFilters().selectedStoreId);
+  // Xem theo ngày / tháng / năm
+  const [periodView, setPeriodView] = useState('day');
 
   // Root admin statistics
   const [rootStats, setRootStats] = useState({
@@ -47,7 +50,7 @@ function Dashboard() {
     } else {
       loadData();
     }
-  }, [selectedStoreId]);
+  }, [selectedStoreId, periodView]);
 
   // Load stores list once for admin (avoid reloading on every store filter change)
   useEffect(() => {
@@ -77,27 +80,41 @@ function Dashboard() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const now = new Date();
+      let startDate, endDate, period;
+      if (periodView === 'day') {
+        startDate = endDate = format(now, 'yyyy-MM-dd');
+        period = 'day';
+      } else if (periodView === 'month') {
+        startDate = format(startOfMonth(now), 'yyyy-MM-dd');
+        endDate = format(endOfMonth(now), 'yyyy-MM-dd');
+        period = 'month';
+      } else {
+        startDate = format(startOfYear(now), 'yyyy-MM-dd');
+        endDate = format(endOfYear(now), 'yyyy-MM-dd');
+        period = 'year';
+      }
 
-      // Get today's revenue
+      // Get revenue and orders count for the period
       let todayRevenue = 0;
+      let todayOrders = 0;
       try {
         const params = new URLSearchParams();
-        params.append('period', 'day');
-        params.append('start_date', today);
-        params.append('end_date', today);
+        params.append('period', period);
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
         if (isAdmin() && selectedStoreId && selectedStoreId !== 'all') {
           params.append('store_id', selectedStoreId);
         }
         const revenueRes = await api.get(`/reports/revenue?${params.toString()}`);
-        const todayRevenueData = revenueRes.data.data?.[0];
-        todayRevenue = parseFloat(todayRevenueData?.total_revenue) || 0;
+        const revenueData = revenueRes.data.data || [];
+        todayRevenue = revenueData.reduce((s, r) => s + (parseFloat(r.total_revenue) || 0), 0);
+        todayOrders = revenueData.reduce((s, r) => s + (r.total_orders || 0), 0);
       } catch (error) {
         console.error('Error loading revenue:', error);
       }
       
-      // Get orders
-      let todayOrders = 0;
+      // Get active orders count (unchanged - current pending)
       let activeOrders = 0;
       try {
         const params = new URLSearchParams();
@@ -107,16 +124,26 @@ function Dashboard() {
         }
         const ordersRes = await api.get(`/orders?${params.toString()}`);
         const orders = ordersRes.data.data || [];
-        
-        // Calculate stats - count orders completed today (by updated_at)
-        todayOrders = orders.filter(
-          (o) => o.status === 'completed' && o.updated_at?.startsWith(today)
-        ).length;
         activeOrders = orders.filter(
           (o) => !['completed', 'cancelled'].includes(o.status)
         ).length;
       } catch (error) {
         console.error('Error loading orders:', error);
+      }
+
+      // Get total amount of debt orders (tổng tiền đang ghi nợ)
+      let debtOrders = 0;
+      try {
+        const params = new URLSearchParams();
+        params.append('debt_only', 'true');
+        if (isAdmin() && selectedStoreId && selectedStoreId !== 'all') {
+          params.append('store_id', selectedStoreId);
+        }
+        const debtRes = await api.get(`/orders?${params.toString()}`);
+        const debtList = debtRes.data.data || [];
+        debtOrders = debtList.reduce((s, o) => s + (parseFloat(o.final_amount) || parseFloat(o.total_amount) || 0), 0);
+      } catch (error) {
+        console.error('Error loading debt orders:', error);
       }
       
       // Get customers count
@@ -143,20 +170,20 @@ function Dashboard() {
             storesList = storesRes.data.data || [];
           }
           
-          // Get revenue for each store separately
+          // Get revenue for each store separately (same period as overview)
           for (const store of storesList) {
             try {
               const storeParams = new URLSearchParams();
-              storeParams.append('period', 'day');
-              storeParams.append('start_date', today);
-              storeParams.append('end_date', today);
+              storeParams.append('period', period);
+              storeParams.append('start_date', startDate);
+              storeParams.append('end_date', endDate);
               storeParams.append('store_id', store.id);
               const url = `/reports/revenue?${storeParams.toString()}`;
               // Debug log removed for security
               const storeRevenueRes = await api.get(url);
-              const storeRevenueData = storeRevenueRes.data.data?.[0];
-              const storeRevenue = parseFloat(storeRevenueData?.total_revenue) || 0;
-              const storeOrdersCount = storeRevenueData?.total_orders || 0;
+              const storeRevenueRows = storeRevenueRes.data.data || [];
+              const storeRevenue = storeRevenueRows.reduce((s, r) => s + (parseFloat(r.total_revenue) || 0), 0);
+              const storeOrdersCount = storeRevenueRows.reduce((s, r) => s + (r.total_orders || 0), 0);
               
               // Debug log removed for security
               
@@ -189,6 +216,7 @@ function Dashboard() {
         todayOrders,
         totalCustomers,
         activeOrders,
+        debtOrders,
       });
       setRevenueByStore(storeRevenues);
     } catch (error) {
@@ -309,36 +337,54 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-end gap-4 justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
           <p className="text-gray-600">Tổng quan hệ thống</p>
         </div>
-        {isAdmin() && stores.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Lọc theo cửa hàng</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Xem theo</label>
             <select
-              value={selectedStoreId}
-              onChange={(e) => setSelectedStoreId(e.target.value)}
+              value={periodView}
+              onChange={(e) => setPeriodView(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg text-base bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="all">Tất cả cửa hàng</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
+              <option value="day">Ngày</option>
+              <option value="month">Tháng</option>
+              <option value="year">Năm</option>
             </select>
           </div>
-        )}
+          {isAdmin() && stores.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lọc theo cửa hàng</label>
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-base bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">Tất cả cửa hàng</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Revenue Section - Separated */}
       <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl shadow-lg p-6 border border-green-200">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-green-800 mb-1">Doanh thu hôm nay</h2>
-            <p className="text-sm text-green-600">Tổng hợp doanh thu trong ngày</p>
+            <h2 className="text-lg font-bold text-green-800 mb-1">
+              Doanh thu {periodView === 'day' ? 'hôm nay' : periodView === 'month' ? 'tháng này' : 'năm nay'}
+            </h2>
+            <p className="text-sm text-green-600">
+              Tổng hợp doanh thu {periodView === 'day' ? 'trong ngày' : periodView === 'month' ? 'trong tháng' : 'trong năm'}
+            </p>
           </div>
           <div className="text-4xl">💰</div>
         </div>
@@ -353,13 +399,10 @@ function Dashboard() {
             <div className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">Số đơn hoàn thành</div>
             <div className="text-2xl font-bold text-green-600">{stats.todayOrders}</div>
           </div>
-          <div className="bg-white rounded-lg p-4 border border-green-200">
-            <div className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">Giá trị đơn trung bình</div>
-            <div className="text-2xl font-bold text-green-600">
-              {stats.todayOrders > 0 
-                ? new Intl.NumberFormat('vi-VN').format(Math.round((parseFloat(stats.todayRevenue) || 0) / stats.todayOrders)) + ' đ'
-                : '0 đ'
-              }
+          <div className="bg-white rounded-lg p-4 border border-amber-200">
+            <div className="text-xs font-medium text-amber-700 uppercase tracking-wide mb-2">Tổng tiền đang ghi nợ</div>
+            <div className="text-2xl font-bold text-amber-600">
+              {new Intl.NumberFormat('vi-VN').format(parseFloat(stats.debtOrders) || 0)} đ
             </div>
           </div>
         </div>

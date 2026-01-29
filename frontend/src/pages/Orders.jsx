@@ -197,6 +197,22 @@ function Orders() {
     setShouldPrint(false);
   };
 
+  const handleMarkDebt = async (order) => {
+    if (!confirm(`Chuyển đơn ${order.code} sang ghi nợ? Đơn sẽ không tính doanh thu cho đến khi nhân viên bấm "Đã thanh toán" trong menu Ghi nợ.`)) return;
+    try {
+      if (order.status !== 'completed') {
+        await api.post(`/orders/${order.id}/status`, { status: 'completed' });
+        await api.patch(`/orders/${order.id}/debt`);
+      } else {
+        await api.patch(`/orders/${order.id}/debt`);
+      }
+      loadOrders();
+      alert('Đã chuyển đơn sang Ghi nợ. Vào menu Ghi nợ để thanh toán khi khách trả.');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Thao tác thất bại');
+    }
+  };
+
   const handleCompleteOrder = async () => {
     if (!orderToComplete) return;
 
@@ -662,12 +678,18 @@ function Orders() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {order.status === 'created' && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap justify-center">
                           <button
                             onClick={() => handleCompleteClick(order)}
                             className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
                           >
                             Hoàn thành
+                          </button>
+                          <button
+                            onClick={() => handleMarkDebt(order)}
+                            className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600"
+                          >
+                            Ghi nợ
                           </button>
                           <button
                             onClick={async () => {
@@ -778,14 +800,22 @@ function Orders() {
                   </div>
                 )}
 
-                <div className="border-t pt-3 mt-3 flex gap-2">
+                <div className="border-t pt-3 mt-3 flex flex-wrap gap-2">
                   {order.status === 'created' && (
-                    <button
-                      onClick={() => handleCompleteClick(order)}
-                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
-                    >
-                      ✓ Hoàn thành
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleCompleteClick(order)}
+                        className="flex-1 min-w-0 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                      >
+                        ✓ Hoàn thành
+                      </button>
+                      <button
+                        onClick={() => handleMarkDebt(order)}
+                        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
+                      >
+                        Ghi nợ
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={async () => {

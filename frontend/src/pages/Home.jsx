@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { getAuth } from '../utils/auth';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDaysInMonth } from 'date-fns';
@@ -38,6 +39,16 @@ function Home() {
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [viewTab, setViewTab] = useState(() => (searchParams.get('tab') === 'debt' ? 'debt' : 'home'));
+  const [debtOrders, setDebtOrders] = useState([]);
+  const [debtOrdersLoading, setDebtOrdersLoading] = useState(false);
+
+  // Sync viewTab from URL when user navigates (e.g. sidebar "Ghi nợ")
+  useEffect(() => {
+    const tab = searchParams.get('tab') === 'debt' ? 'debt' : 'home';
+    setViewTab(tab);
+  }, [searchParams]);
 
   useEffect(() => {
     loadProducts();
@@ -45,6 +56,12 @@ function Home() {
     loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (viewTab === 'debt') {
+      loadDebtOrders();
+    }
+  }, [viewTab]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -147,6 +164,51 @@ function Home() {
     setShowCompleteModal(true);
     setShouldPrint(false);
     setPaymentMethod('cash'); // Reset to default
+  };
+
+  const handleMarkDebt = async (order) => {
+    if (!confirm(`Chuyển đơn ${order.code} sang ghi nợ? Đơn sẽ không tính doanh thu cho đến khi nhân viên bấm "Đã thanh toán" trong menu Ghi nợ.`)) return;
+    try {
+      if (order.status !== 'completed') {
+        await api.post(`/orders/${order.id}/status`, { status: 'completed' });
+        await api.patch(`/orders/${order.id}/debt`);
+      } else {
+        await api.patch(`/orders/${order.id}/debt`);
+      }
+      loadOrders();
+      loadStats();
+      if (viewTab === 'debt') loadDebtOrders();
+      alert('Đã chuyển đơn sang Ghi nợ. Vào menu Ghi nợ để thanh toán khi khách trả.');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Thao tác thất bại');
+    }
+  };
+
+  const loadDebtOrders = async () => {
+    setDebtOrdersLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('debt_only', 'true');
+      const response = await api.get(`/orders?${params.toString()}`);
+      setDebtOrders(response.data.data || []);
+    } catch (error) {
+      console.error('Error loading debt orders:', error);
+      setDebtOrders([]);
+    } finally {
+      setDebtOrdersLoading(false);
+    }
+  };
+
+  const handleMarkDebtPaid = async (order) => {
+    if (!confirm(`Xác nhận đã thanh toán đơn ${order.code}? Doanh thu sẽ được ghi nhận hôm nay.`)) return;
+    try {
+      await api.patch(`/orders/${order.id}/debt/paid`);
+      loadDebtOrders();
+      loadStats();
+      alert('Đã ghi nhận thanh toán.');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Thao tác thất bại');
+    }
   };
 
   const handleCompleteOrder = async () => {
@@ -451,6 +513,9 @@ function Home() {
 
   return (
     <div className="space-y-4">
+      {/* Trang chủ: Stats + Date + Orders */}
+      {viewTab === 'home' && (
+      <>
       {/* Header with Stats */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <div className="bg-white rounded-lg shadow p-3 sm:p-4">
@@ -623,6 +688,12 @@ function Home() {
                         ✓
                       </button>
                       <button
+                        onClick={() => handleMarkDebt(order)}
+                        className="px-2.5 py-1.5 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
+                      >
+                        Ghi nợ
+                      </button>
+                      <button
                         onClick={async () => {
                           setPrinting(true);
                           try {
@@ -648,6 +719,83 @@ function Home() {
           ))
         )}
       </div>
+      </>
+      )}
+
+      {/* Tab Ghi nợ: Danh sách đơn ghi nợ */}
+      {viewTab === 'debt' && (
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-3 sm:p-4 border-b">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-800">Đơn ghi nợ (chưa thanh toán)</h2>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">Các đơn ghi nợ không tính vào doanh thu cho đến khi bấm &quot;Đã thanh toán&quot;.</p>
+        </div>
+        {debtOrdersLoading ? (
+          <div className="p-6 text-center text-gray-500 text-sm">Đang tải...</div>
+        ) : debtOrders.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 text-sm">Chưa có đơn ghi nợ</div>
+        ) : (
+          <div className="divide-y">
+            {debtOrders.map((order) => (
+              <div key={order.id} className="p-3 sm:p-4 hover:bg-gray-50">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-sm text-gray-800">{order.code}</span>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">Ghi nợ</span>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      <span className="font-medium">Khách:</span> {order.customer_name || order.customer_phone || 'N/A'}
+                      {order.customer_phone && !order.customer_phone.startsWith('temp_') && ` • ${order.customer_phone}`}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-sm font-bold text-gray-800">
+                      {new Intl.NumberFormat('vi-VN').format(parseFloat(order.final_amount) || 0)} đ
+                    </div>
+                  </div>
+                </div>
+                {order.items && order.items.length > 0 && (
+                  <div className="border-t pt-2 mt-2 text-xs text-gray-600">
+                    {order.items.map((item) => (
+                      <div key={item.id} className="flex justify-between">
+                        <span>{item.product_name} x{item.quantity} {item.product_unit}</span>
+                        <span>{new Intl.NumberFormat('vi-VN').format((item.quantity || 0) * (item.unit_price || 0))} đ</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2 mt-3 pt-3 border-t">
+                  <button
+                    onClick={() => handleMarkDebtPaid(order)}
+                    className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+                  >
+                    Đã thanh toán
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setPrinting(true);
+                      try {
+                        const result = await printBill(order.id);
+                        alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
+                      } catch (printError) {
+                        console.error('Print error:', printError);
+                        alert(printError.message || 'In bill thất bại.');
+                      } finally {
+                        setPrinting(false);
+                      }
+                    }}
+                    disabled={printing}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                  >
+                    {printing ? '...' : 'In bill'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      )}
 
       {/* Create Order Modal */}
       {showModal && (
