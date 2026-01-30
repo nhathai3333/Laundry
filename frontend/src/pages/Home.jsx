@@ -43,6 +43,7 @@ function Home() {
   const [viewTab, setViewTab] = useState(() => (searchParams.get('tab') === 'debt' ? 'debt' : 'home'));
   const [debtOrders, setDebtOrders] = useState([]);
   const [debtOrdersLoading, setDebtOrdersLoading] = useState(false);
+  const [debtSearchQuery, setDebtSearchQuery] = useState('');
 
   // Sync viewTab from URL when user navigates (e.g. sidebar "Ghi nợ")
   useEffect(() => {
@@ -726,16 +727,36 @@ function Home() {
       {viewTab === 'debt' && (
       <div className="bg-white rounded-lg shadow">
         <div className="p-3 sm:p-4 border-b">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-800">Đơn ghi nợ (chưa thanh toán)</h2>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">Các đơn ghi nợ không tính vào doanh thu cho đến khi bấm &quot;Đã thanh toán&quot;.</p>
+          <div className="mt-3">
+            <input
+              type="text"
+              placeholder="Tìm theo tên khách hàng..."
+              value={debtSearchQuery}
+              onChange={(e) => setDebtSearchQuery(e.target.value)}
+              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            />
+          </div>
         </div>
         {debtOrdersLoading ? (
           <div className="p-6 text-center text-gray-500 text-sm">Đang tải...</div>
-        ) : debtOrders.length === 0 ? (
-          <div className="p-6 text-center text-gray-500 text-sm">Chưa có đơn ghi nợ</div>
-        ) : (
+        ) : (() => {
+          const q = (debtSearchQuery || '').trim().toLowerCase();
+          const filtered = q
+            ? debtOrders.filter((o) => {
+                const name = (o.customer_name || o.customer_phone || '').toString().toLowerCase();
+                return name.includes(q);
+              })
+            : debtOrders;
+          if (filtered.length === 0) {
+            return (
+              <div className="p-6 text-center text-gray-500 text-sm">
+                {debtOrders.length === 0 ? 'Chưa có đơn ghi nợ' : 'Không tìm thấy đơn nào theo tên khách hàng'}
+              </div>
+            );
+          }
+          return (
           <div className="divide-y">
-            {debtOrders.map((order) => (
+            {filtered.map((order) => (
               <div key={order.id} className="p-3 sm:p-4 hover:bg-gray-50">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex-1 min-w-0">
@@ -793,7 +814,8 @@ function Home() {
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
       </div>
       )}
 
@@ -935,7 +957,6 @@ function Home() {
                     }}
                     className="w-full min-w-0 px-2 py-1.5 border rounded-lg text-xs sm:text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 touch-manipulation"
                     placeholder="Nhập số điện thoại"
-                    inputMode="tel"
                     autoComplete="tel"
                   />
                   {showCustomerSuggestions && customerSuggestions.length > 0 && (

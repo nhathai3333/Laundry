@@ -105,28 +105,12 @@ router.post('/login', loginRateLimiter(), async (req, res) => {
       return res.status(400).json({ error: 'Phone and password are required' });
     }
 
-    // Get user with security fields (handle case where columns might not exist)
-    let user;
-    try {
-      user = await queryOne(`
-        SELECT *, 
-               locked_until,
-               failed_login_attempts,
-               last_failed_login
-        FROM users 
-        WHERE phone = ?
-      `, [phone]);
-    } catch (error) {
-      // Fallback if security columns don't exist yet
-      if (error.code === 'ER_BAD_FIELD_ERROR') {
-        user = await queryOne('SELECT * FROM users WHERE phone = ?', [phone]);
-        // Add default values for security fields
-        user.locked_until = null;
-        user.failed_login_attempts = 0;
-        user.last_failed_login = null;
-      } else {
-        throw error;
-      }
+    // Get user (use SELECT * so missing security columns don't break login)
+    const user = await queryOne('SELECT * FROM users WHERE phone = ?', [phone]);
+    if (user) {
+      user.locked_until = user.locked_until ?? null;
+      user.failed_login_attempts = user.failed_login_attempts ?? 0;
+      user.last_failed_login = user.last_failed_login ?? null;
     }
 
     if (!user) {

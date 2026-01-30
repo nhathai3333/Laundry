@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS users (
     store_id INT,
     subscription_package VARCHAR(50),
     subscription_expires_at DATETIME,
+    failed_login_attempts INT NOT NULL DEFAULT 0,
+    last_failed_login DATETIME NULL,
+    locked_until DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL

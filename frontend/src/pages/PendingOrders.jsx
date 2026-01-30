@@ -10,6 +10,7 @@ function PendingOrders() {
   const [shouldPrint, setShouldPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadPendingOrders();
@@ -122,6 +123,14 @@ function PendingOrders() {
     );
   }
 
+  const q = (searchQuery || '').trim().toLowerCase();
+  const filteredOrders = q
+    ? orders.filter((o) => {
+        const name = (o.customer_name || o.customer_phone || '').toString().toLowerCase();
+        return name.includes(q);
+      })
+    : orders;
+
   return (
     <div className="space-y-2 sm:space-y-3">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
@@ -129,8 +138,17 @@ function PendingOrders() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Tồn kho</h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-0.5">Đơn hàng chưa hoàn thành</p>
         </div>
-        <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap bg-blue-50 px-3 py-1.5 rounded-lg">
-          <span className="font-semibold text-blue-600">{orders.length}</span> đơn
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <input
+            type="text"
+            placeholder="Tìm theo tên khách hàng..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 sm:w-56 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+          <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap bg-blue-50 px-3 py-1.5 rounded-lg flex-shrink-0">
+            <span className="font-semibold text-blue-600">{filteredOrders.length}</span> đơn
+          </div>
         </div>
       </div>
 
@@ -140,9 +158,15 @@ function PendingOrders() {
           <h3 className="text-lg font-semibold text-gray-700 mb-1">Không có đơn hàng</h3>
           <p className="text-sm text-gray-500">Tất cả đơn hàng đã được hoàn thành</p>
         </div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <div className="text-4xl mb-2">🔍</div>
+          <h3 className="text-base font-semibold text-gray-700 mb-1">Không tìm thấy đơn nào</h3>
+          <p className="text-sm text-gray-500">Thử đổi từ khóa tìm theo tên khách hàng</p>
+        </div>
       ) : (
         <div className="space-y-2">
-          {orders.map((order) => (
+          {filteredOrders.map((order) => (
             <div
               key={order.id}
               className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5 sm:p-3 hover:shadow-md transition-all"

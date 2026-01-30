@@ -28,6 +28,19 @@ async function ensureUserSubscriptionColumns(connection) {
     { name: 'subscription_package', ddl: 'ALTER TABLE users ADD COLUMN subscription_package VARCHAR(50) NULL AFTER store_id' },
     { name: 'subscription_expires_at', ddl: 'ALTER TABLE users ADD COLUMN subscription_expires_at DATETIME NULL AFTER subscription_package' }
   ];
+  await ensureUsersColumns(connection, requiredColumns);
+}
+
+async function ensureUserSecurityColumns(connection) {
+  const requiredColumns = [
+    { name: 'failed_login_attempts', ddl: 'ALTER TABLE users ADD COLUMN failed_login_attempts INT NOT NULL DEFAULT 0 AFTER updated_at' },
+    { name: 'last_failed_login', ddl: 'ALTER TABLE users ADD COLUMN last_failed_login DATETIME NULL AFTER failed_login_attempts' },
+    { name: 'locked_until', ddl: 'ALTER TABLE users ADD COLUMN locked_until DATETIME NULL AFTER last_failed_login' }
+  ];
+  await ensureUsersColumns(connection, requiredColumns);
+}
+
+async function ensureUsersColumns(connection, requiredColumns) {
 
   for (const col of requiredColumns) {
     const [check] = await connection.query(
@@ -886,6 +899,7 @@ async function ensureSchema() {
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       await ensureUserSubscriptionColumns(connection);
+      await ensureUserSecurityColumns(connection);
 
       try {
         await cleanStoresForeignKeyValues(connection);
