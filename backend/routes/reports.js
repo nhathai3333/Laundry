@@ -23,6 +23,23 @@ function getStoreIdFilter(req) {
   return req.user.store_id || null;
 }
 
+// SQL fragment + params for "admin without store_id": only stores owned by this admin
+function adminStoresOnlyFilter(tableAlias = 'o') {
+  const o = tableAlias;
+  return {
+    sql: ` AND (
+      (${o}.store_id IS NOT NULL AND ${o}.store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+      OR (
+        ${o}.store_id IS NULL AND (
+          ${o}.assigned_to IN (SELECT id FROM users WHERE store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+          OR ${o}.created_by IN (SELECT id FROM users WHERE store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+        )
+      )
+    )`,
+    params: (userId) => [userId, userId, userId]
+  };
+}
+
 // Helper function to validate pagination params
 function validatePagination(page, limit, maxLimit = 100) {
   const pageNum = parseInt(page) || 1;
@@ -120,8 +137,11 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
           )
         )`;
         params.push(storeId, storeId, storeId);
+      } else if (req.user.role === 'admin') {
+        const { sql, params: p } = adminStoresOnlyFilter('o');
+        querySql += sql;
+        params.push(...p(req.user.id));
       }
-      // If admin without store_id filter, show all (no additional filter)
       
       groupBy = 'DATE(COALESCE(o.debt_paid_at, o.updated_at))';
     } else if (period === 'month') {
@@ -159,8 +179,11 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
           )
         )`;
         params.push(storeId, storeId, storeId);
+      } else if (req.user.role === 'admin') {
+        const { sql, params: p } = adminStoresOnlyFilter('o');
+        querySql += sql;
+        params.push(...p(req.user.id));
       }
-      // If admin without store_id filter, show all (no additional filter)
       
       groupBy = 'DATE_FORMAT(COALESCE(o.debt_paid_at, o.updated_at), "%Y-%m")';
     } else {
@@ -198,8 +221,11 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
           )
         )`;
         params.push(storeId, storeId, storeId);
+      } else if (req.user.role === 'admin') {
+        const { sql, params: p } = adminStoresOnlyFilter('o');
+        querySql += sql;
+        params.push(...p(req.user.id));
       }
-      // If admin without store_id filter, show all (no additional filter)
       
       groupBy = 'DATE_FORMAT(COALESCE(o.debt_paid_at, o.updated_at), "%Y")';
     }
@@ -442,6 +468,9 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
       if (storeId) {
         querySql += ' AND t.store_id = ?';
         params.push(storeId);
+      } else if (req.user.role === 'admin') {
+        querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
       }
       
       querySql += ' GROUP BY t.store_id, DATE(t.check_in) ORDER BY t.store_id, work_date';
@@ -471,6 +500,9 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
       if (storeId) {
         querySql += ' AND t.store_id = ?';
         params.push(storeId);
+      } else if (req.user.role === 'admin') {
+        querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
       }
       
       querySql += ' GROUP BY t.store_id, DATE(t.check_in) ORDER BY t.store_id, work_date';
@@ -592,6 +624,10 @@ router.get('/export', authorize('admin', 'employer'), async (req, res) => {
             )
           )`;
           productParams.push(storeId, storeId, storeId);
+        } else if (req.user.role === 'admin') {
+          const { sql, params: p } = adminStoresOnlyFilter('o');
+          productQuery += sql;
+          productParams.push(...p(req.user.id));
         }
         
         productQuery += ' GROUP BY p.id, p.name, p.unit ORDER BY total_revenue DESC';
@@ -646,6 +682,10 @@ router.get('/export', authorize('admin', 'employer'), async (req, res) => {
             )
           )`;
           categoryParams.push(storeId, storeId, storeId);
+        } else if (req.user.role === 'admin') {
+          const { sql, params: p } = adminStoresOnlyFilter('o');
+          categoryQuery += sql;
+          categoryParams.push(...p(req.user.id));
         }
         
         categoryQuery += ' GROUP BY p.unit ORDER BY total_revenue DESC';
@@ -700,6 +740,10 @@ router.get('/export', authorize('admin', 'employer'), async (req, res) => {
             )
           )`;
           shiftParams.push(storeId, storeId, storeId);
+        } else if (req.user.role === 'admin') {
+          const { sql, params: p } = adminStoresOnlyFilter('o');
+          shiftQuery += sql;
+          shiftParams.push(...p(req.user.id));
         }
         
         shiftQuery += ' GROUP BY shift ORDER BY shift';
@@ -749,6 +793,10 @@ router.get('/export', authorize('admin', 'employer'), async (req, res) => {
             )
           )`;
           dailyParams.push(storeId, storeId, storeId);
+        } else if (req.user.role === 'admin') {
+          const { sql, params: p } = adminStoresOnlyFilter('o');
+          dailyQuery += sql;
+          dailyParams.push(...p(req.user.id));
         }
         
         dailyQuery += ' GROUP BY DATE(o.updated_at) ORDER BY DATE(o.updated_at)';
@@ -1037,8 +1085,11 @@ router.get('/revenue-by-product-daily', authorize('admin', 'employer'), async (r
         )
       )`;
       params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
-    // If admin without store_id filter, show all (no additional filter)
     
 
     querySql += ' GROUP BY DATE(o.updated_at), p.id, p.name, p.unit ORDER BY date DESC, total_revenue DESC';
@@ -1157,8 +1208,11 @@ router.get('/revenue-by-category-daily', authorize('admin', 'employer'), async (
         )
       )`;
       params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
-    // If admin without store_id filter, show all (no additional filter)
 
     querySql += ' GROUP BY DATE(o.updated_at), p.name ORDER BY date DESC, total_revenue DESC';
     
@@ -1445,6 +1499,9 @@ router.get('/revenue-by-shift-daily', authorize('admin', 'employer'), async (req
       // Employer without store_id: filter by their own timesheets
       querySql += ' AND t.user_id = ?';
       params.push(req.user.id);
+    } else if (req.user.role === 'admin') {
+      querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+      params.push(req.user.id);
     }
 
     querySql += ' ORDER BY date DESC, COALESCE(e.name, u.name), t.check_in DESC';
@@ -1535,8 +1592,11 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         )
       )`;
       params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
-    // If admin without store_id filter, show all (no additional filter)
 
     querySql += ' GROUP BY DATE(o.updated_at) ORDER BY date DESC';
 

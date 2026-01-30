@@ -9,6 +9,15 @@ function Products() {
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState(savedFilters.selectedStoreId);
   const [loading, setLoading] = useState(true);
+
+  // Default to first store when stores load (bỏ "tất cả cửa hàng")
+  useEffect(() => {
+    if (stores.length === 0) return;
+    const currentValid = stores.some(s => String(s.id) === String(selectedStoreId));
+    if (!currentValid || selectedStoreId === 'all') {
+      setSelectedStoreId(String(stores[0].id));
+    }
+  }, [stores]);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
@@ -27,11 +36,8 @@ function Products() {
 
   useEffect(() => {
     // Filter products by selected store (only show active products)
-    if (selectedStoreId === 'all') {
-      setProducts(allProducts.filter(p => p.status === 'active'));
-    } else {
-      setProducts(allProducts.filter(p => p.store_id === parseInt(selectedStoreId) && p.status === 'active'));
-    }
+    if (!selectedStoreId || selectedStoreId === 'all') return;
+    setProducts(allProducts.filter(p => p.store_id === parseInt(selectedStoreId) && p.status === 'active'));
   }, [selectedStoreId, allProducts]);
 
   // Save store filter whenever it changes
@@ -54,9 +60,7 @@ function Products() {
       const productsData = response.data.data || [];
       setAllProducts(productsData);
       // Apply current filter (only show active products)
-      if (selectedStoreId === 'all') {
-        setProducts(productsData.filter(p => p.status === 'active'));
-      } else {
+      if (selectedStoreId && selectedStoreId !== 'all') {
         setProducts(productsData.filter(p => p.store_id === parseInt(selectedStoreId) && p.status === 'active'));
       }
     } catch (error) {
@@ -127,7 +131,7 @@ function Products() {
       price: '',
       eta_minutes: '',
       status: 'active',
-      store_id: selectedStoreId !== 'all' ? selectedStoreId : '',
+      store_id: selectedStoreId && selectedStoreId !== 'all' ? selectedStoreId : (stores[0]?.id ? String(stores[0].id) : ''),
     });
   };
 
@@ -153,11 +157,10 @@ function Products() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Lọc theo cửa hàng</label>
             <select
-              value={selectedStoreId}
+              value={stores.length ? selectedStoreId : ''}
               onChange={(e) => setSelectedStoreId(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg text-base bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="all">Tất cả cửa hàng</option>
               {stores.map((store) => (
                 <option key={store.id} value={store.id}>
                   {store.name}
@@ -182,9 +185,7 @@ function Products() {
       {products.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <p className="text-gray-500 text-lg">
-            {selectedStoreId === 'all' 
-              ? 'Chưa có sản phẩm nào' 
-              : `Chưa có sản phẩm nào cho cửa hàng "${stores.find(s => s.id === parseInt(selectedStoreId))?.name || ''}"`}
+            {stores.length === 0 ? 'Chưa có cửa hàng nào' : `Chưa có sản phẩm nào cho cửa hàng "${stores.find(s => s.id === parseInt(selectedStoreId))?.name || ''}"`}
           </p>
         </div>
       ) : (

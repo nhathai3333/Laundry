@@ -26,16 +26,16 @@ router.get('/', async (req, res) => {
     `;
     const params = [];
 
-    // Admin can filter by store_id from query param or token
-    // Employer can only see their own
+    // Admin chỉ xem chấm công cửa hàng mình sở hữu (stores.admin_id = user.id)
     const storeIdParam = req.query.store_id;
     if (req.user.role === 'admin') {
-      // Only filter by store_id if explicitly provided and not 'all'
       if (storeIdParam && storeIdParam !== 'all') {
         sqlQuery += ' AND t.store_id = ?';
         params.push(storeIdParam);
+      } else {
+        sqlQuery += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
       }
-      // If storeIdParam is 'all' or not provided, show all stores (no filter)
     } else if (req.user.role === 'employer') {
       sqlQuery += ' AND t.user_id = ?';
       params.push(req.user.id);
