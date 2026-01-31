@@ -56,6 +56,22 @@ router.get('/bill-data/:orderId', async (req, res) => {
         if (!store || store.admin_id !== req.user.id) {
           return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
         }
+      } else {
+        // Đơn cũ không có store_id: kiểm tra assigned_to/created_by thuộc chuỗi của admin
+        const userId = order.assigned_to || order.created_by;
+        if (userId) {
+          const userStore = await queryOne('SELECT store_id FROM users WHERE id = ?', [userId]);
+          if (userStore?.store_id) {
+            const store = await queryOne('SELECT admin_id FROM stores WHERE id = ?', [userStore.store_id]);
+            if (!store || store.admin_id !== req.user.id) {
+              return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+            }
+          } else {
+            return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+          }
+        } else {
+          return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+        }
       }
     } else if (req.user.role === 'root') {
       return res.status(403).json({ error: 'Root admin không thể in đơn hàng' });
@@ -160,6 +176,21 @@ router.post('/bill/:orderId', async (req, res) => {
       if (order.store_id) {
         const store = await queryOne('SELECT admin_id FROM stores WHERE id = ?', [order.store_id]);
         if (!store || store.admin_id !== req.user.id) {
+          return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+        }
+      } else {
+        const userId = order.assigned_to || order.created_by;
+        if (userId) {
+          const userStore = await queryOne('SELECT store_id FROM users WHERE id = ?', [userId]);
+          if (userStore?.store_id) {
+            const store = await queryOne('SELECT admin_id FROM stores WHERE id = ?', [userStore.store_id]);
+            if (!store || store.admin_id !== req.user.id) {
+              return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+            }
+          } else {
+            return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
+          }
+        } else {
           return res.status(403).json({ error: 'Bạn chỉ có thể in đơn hàng của cửa hàng trong chuỗi của mình' });
         }
       }

@@ -23,8 +23,14 @@ router.get('/', async (req, res) => {
         storeId = user.store_id;
       }
     } else if (req.user.role === 'admin' && req.user.role !== 'root') {
-      // For admin, use store_id from query param or token
-      storeId = req.query.store_id || req.user.store_id || null;
+      // For admin, chỉ được xem settings cửa hàng trong chuỗi của mình
+      const rawStoreId = req.query.store_id || req.user.store_id || null;
+      if (rawStoreId) {
+        const store = await queryOne('SELECT id FROM stores WHERE id = ? AND admin_id = ?', [rawStoreId, req.user.id]);
+        storeId = store ? rawStoreId : null;
+      } else {
+        storeId = null;
+      }
     } else if (req.user.role === 'root') {
       // Root can specify store_id in query
       storeId = req.query.store_id || null;

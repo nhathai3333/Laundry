@@ -30,8 +30,15 @@ router.get('/', async (req, res) => {
     const storeIdParam = req.query.store_id;
     if (req.user.role === 'admin') {
       if (storeIdParam && storeIdParam !== 'all') {
-        sqlQuery += ' AND t.store_id = ?';
-        params.push(storeIdParam);
+        // Chỉ chấp nhận store_id thuộc chuỗi của admin
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeIdParam, req.user.id]);
+        if (store) {
+          sqlQuery += ' AND t.store_id = ?';
+          params.push(storeIdParam);
+        } else {
+          sqlQuery += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+          params.push(req.user.id);
+        }
       } else {
         sqlQuery += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
         params.push(req.user.id);
@@ -353,8 +360,24 @@ router.get('/summary', authorize('admin'), async (req, res) => {
         AND t.check_out IS NOT NULL
     `;
     const params = [String(month).padStart(2, '0'), year];
-    
-    if (req.user.store_id) {
+
+    // Admin chuỗi: chỉ xem chấm công cửa hàng mình sở hữu (stores.admin_id = user.id)
+    const storeIdParam = req.query.store_id;
+    if (req.user.role === 'admin') {
+      if (storeIdParam && storeIdParam !== 'all') {
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeIdParam, req.user.id]);
+        if (store) {
+          querySql += ' AND t.store_id = ?';
+          params.push(storeIdParam);
+        } else {
+          querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+          params.push(req.user.id);
+        }
+      } else {
+        querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
+      }
+    } else if (req.user.store_id) {
       querySql += ' AND t.store_id = ?';
       params.push(req.user.store_id);
     }
@@ -403,8 +426,24 @@ router.get('/revenue-by-shift', authorize('admin'), async (req, res) => {
         AND t.revenue_amount > 0
     `;
     const params = [String(month).padStart(2, '0'), year];
-    
-    if (req.user.store_id) {
+
+    // Admin chuỗi: chỉ xem chấm công cửa hàng mình sở hữu
+    const storeIdParam = req.query.store_id;
+    if (req.user.role === 'admin') {
+      if (storeIdParam && storeIdParam !== 'all') {
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeIdParam, req.user.id]);
+        if (store) {
+          querySql += ' AND t.store_id = ?';
+          params.push(storeIdParam);
+        } else {
+          querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+          params.push(req.user.id);
+        }
+      } else {
+        querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
+      }
+    } else if (req.user.store_id) {
       querySql += ' AND t.store_id = ?';
       params.push(req.user.store_id);
     }
@@ -481,15 +520,21 @@ router.get('/payroll', authorize('admin'), async (req, res) => {
     `;
     const params = [startDate, endDate];
     
-    // Admin can filter by store_id from query param or token
+    // Admin chuỗi: chỉ xem chấm công cửa hàng mình sở hữu; validate store_id nếu có
     const storeIdParam = req.query.store_id;
     if (req.user.role === 'admin') {
       if (storeIdParam && storeIdParam !== 'all') {
-        querySql += ' AND t.store_id = ?';
-        params.push(storeIdParam);
-      } else if (req.user.store_id) {
-        querySql += ' AND t.store_id = ?';
-        params.push(req.user.store_id);
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeIdParam, req.user.id]);
+        if (store) {
+          querySql += ' AND t.store_id = ?';
+          params.push(storeIdParam);
+        } else {
+          querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+          params.push(req.user.id);
+        }
+      } else {
+        querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
       }
     } else if (req.user.role === 'employer') {
       querySql += ' AND t.store_id = ?';
@@ -585,15 +630,21 @@ router.get('/daily-hours', authorize('admin'), async (req, res) => {
     `;
     const params = [monthStr, year];
     
-    // Admin can filter by store_id from query param or token
+    // Admin chuỗi: chỉ xem chấm công cửa hàng mình sở hữu; validate store_id nếu có
     const storeIdParam = req.query.store_id;
     if (req.user.role === 'admin') {
       if (storeIdParam && storeIdParam !== 'all') {
-        querySql += ' AND t.store_id = ?';
-        params.push(storeIdParam);
-      } else if (req.user.store_id) {
-        querySql += ' AND t.store_id = ?';
-        params.push(req.user.store_id);
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeIdParam, req.user.id]);
+        if (store) {
+          querySql += ' AND t.store_id = ?';
+          params.push(storeIdParam);
+        } else {
+          querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+          params.push(req.user.id);
+        }
+      } else {
+        querySql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
       }
     } else if (req.user.role === 'employer') {
       querySql += ' AND t.store_id = ?';
@@ -692,13 +743,21 @@ router.get('/export', async (req, res) => {
     `;
     const params = [];
 
-    // Admin can filter by store_id from query param or token
-    // Employer can only see their own
+    // Admin chuỗi: chỉ xem chấm công cửa hàng mình sở hữu; validate store_id nếu có
     const storeIdParam = store_id || req.query.store_id;
     if (req.user.role === 'admin') {
       if (storeIdParam && storeIdParam !== 'all') {
-        sqlQuery += ' AND t.store_id = ?';
-        params.push(storeIdParam);
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeIdParam, req.user.id]);
+        if (store) {
+          sqlQuery += ' AND t.store_id = ?';
+          params.push(storeIdParam);
+        } else {
+          sqlQuery += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+          params.push(req.user.id);
+        }
+      } else {
+        sqlQuery += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+        params.push(req.user.id);
       }
     } else if (req.user.role === 'employer') {
       sqlQuery += ' AND t.user_id = ?';

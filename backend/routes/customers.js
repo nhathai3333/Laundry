@@ -23,19 +23,22 @@ router.get('/', async (req, res) => {
       return res.json({ data: [] });
     } else if (req.user.role === 'admin' && req.user.role !== 'root') {
       // Admin: only customers with orders from stores in their chain
-      // Support store_id from query param for filtering
+      // Validate store_id from query - chỉ chấp nhận cửa hàng thuộc chuỗi của admin
       const storeIdParam = req.query.store_id;
+      let effectiveStoreId = null;
       if (storeIdParam && storeIdParam !== 'all') {
-        // Filter by specific store - use o.store_id directly
+        const store = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [parseInt(storeIdParam), req.user.id]);
+        if (store) effectiveStoreId = parseInt(storeIdParam);
+      }
+      if (effectiveStoreId) {
         querySql = `
           SELECT DISTINCT c.*
           FROM customers c
           INNER JOIN orders o ON c.id = o.customer_id
           WHERE o.store_id = ?
         `;
-        params.push(parseInt(storeIdParam));
+        params.push(effectiveStoreId);
       } else {
-        // Show all customers from stores in admin's chain
         querySql = `
           SELECT DISTINCT c.*
           FROM customers c
@@ -109,6 +112,24 @@ router.get('/by-phone/:phone', async (req, res) => {
       return res.json({ data: null });
     }
 
+    // Admin chuỗi: chỉ trả về khách nếu khách có đơn tại cửa hàng trong chuỗi của admin
+    if (req.user.role === 'admin' && req.user.role !== 'root') {
+      const hasOrderInChain = await queryOne(`
+        SELECT 1 FROM orders o
+        WHERE o.customer_id = ?
+          AND (
+            (o.store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+            OR (o.store_id IS NULL AND (
+              o.assigned_to IN (SELECT id FROM users WHERE store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+              OR o.created_by IN (SELECT id FROM users WHERE store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+            ))
+          )
+      `, [customer.id, req.user.id, req.user.id, req.user.id]);
+      if (!hasOrderInChain) {
+        return res.json({ data: null });
+      }
+    }
+
     res.json({ data: customer });
   } catch (error) {
     console.error('Get customer by phone error:', error);
@@ -122,6 +143,26 @@ router.get('/:id', async (req, res) => {
     const customer = await queryOne('SELECT * FROM customers WHERE id = ?', [req.params.id]);
 
     if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Admin chuỗi: chỉ trả về khách nếu khách có đơn tại cửa hàng trong chuỗi của admin
+    if (req.user.role === 'admin' && req.user.role !== 'root') {
+      const hasOrderInChain = await queryOne(`
+        SELECT 1 FROM orders o
+        WHERE o.customer_id = ?
+          AND (
+            (o.store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+            OR (o.store_id IS NULL AND (
+              o.assigned_to IN (SELECT id FROM users WHERE store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+              OR o.created_by IN (SELECT id FROM users WHERE store_id IN (SELECT id FROM stores WHERE admin_id = ?))
+            ))
+          )
+      `, [customer.id, req.user.id, req.user.id, req.user.id]);
+      if (!hasOrderInChain) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
+    } else if (req.user.role === 'root') {
       return res.status(404).json({ error: 'Customer not found' });
     }
 

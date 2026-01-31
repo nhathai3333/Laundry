@@ -23,6 +23,16 @@ function getStoreIdFilter(req) {
   return req.user.store_id || null;
 }
 
+// Admin chỉ được dùng store_id thuộc chuỗi của mình. Nếu không thuộc thì coi như null (sẽ dùng adminStoresOnlyFilter).
+async function resolveStoreIdForAdmin(req) {
+  let storeId = getStoreIdFilter(req);
+  if (req.user.role === 'admin' && storeId) {
+    const row = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [storeId, req.user.id]);
+    if (!row) storeId = null; // store không thuộc admin => bỏ qua, dùng filter "chỉ cửa hàng của admin"
+  }
+  return storeId;
+}
+
 // SQL fragment + params for "admin without store_id": only stores owned by this admin
 function adminStoresOnlyFilter(tableAlias = 'o') {
   const o = tableAlias;
@@ -99,8 +109,8 @@ router.get('/revenue', authorize('admin', 'employer'), async (req, res) => {
       }
     }
 
-    // Admin/Employer can access stores based on role
-    const storeId = getStoreIdFilter(req);
+    // Admin/Employer can access stores based on role (admin chỉ được store mình sở hữu)
+    const storeId = await resolveStoreIdForAdmin(req);
     let querySql, groupBy, params;
     if (period === 'day') {
       querySql = `
@@ -254,7 +264,7 @@ router.get('/revenue-by-product', authorize('admin'), async (req, res) => {
     }
 
     // Admin can see all stores if no store_id, or filter by store_id if provided
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     let querySql = `
       SELECT 
         p.id,
@@ -270,9 +280,21 @@ router.get('/revenue-by-product', authorize('admin'), async (req, res) => {
     `;
     const params = [];
     
-    if (storeId) {
-      querySql += ' AND o.store_id = ?';
-      params.push(storeId);
+    if (req.user.role === 'employer') {
+      if (storeId) {
+        querySql += ` AND (o.store_id = ? OR (o.store_id IS NULL AND (o.assigned_to = ? OR o.created_by = ?)))`;
+        params.push(storeId, req.user.id, req.user.id);
+      } else {
+        querySql += ' AND (o.assigned_to = ? OR o.created_by = ?)';
+        params.push(req.user.id, req.user.id);
+      }
+    } else if (req.user.role === 'admin' && storeId) {
+      querySql += ` AND (o.store_id = ? OR (o.store_id IS NULL AND (o.assigned_to IN (SELECT id FROM users WHERE store_id = ?) OR o.created_by IN (SELECT id FROM users WHERE store_id = ?))))`;
+      params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
 
     querySql += ' GROUP BY p.id, p.name, p.unit ORDER BY total_revenue DESC';
@@ -293,7 +315,7 @@ router.get('/revenue-by-employee', authorize('admin'), async (req, res) => {
     }
 
     // Admin can see all stores if no store_id, or filter by store_id if provided
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     let querySql = `
       SELECT 
         u.id,
@@ -306,9 +328,13 @@ router.get('/revenue-by-employee', authorize('admin'), async (req, res) => {
     `;
     const params = [];
     
-    if (storeId) {
-      querySql += ' AND o.store_id = ?';
-      params.push(storeId);
+    if (req.user.role === 'admin' && storeId) {
+      querySql += ` AND (o.store_id = ? OR (o.store_id IS NULL AND (o.assigned_to IN (SELECT id FROM users WHERE store_id = ?) OR o.created_by IN (SELECT id FROM users WHERE store_id = ?))))`;
+      params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
 
     querySql += ' GROUP BY u.id, u.name ORDER BY total_revenue DESC';
@@ -338,7 +364,7 @@ router.get('/top-customers', authorize('admin'), async (req, res) => {
     }
 
     // Admin can see all stores if no store_id, or filter by store_id if provided
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     let querySql = `
       SELECT 
         c.id,
@@ -352,9 +378,13 @@ router.get('/top-customers', authorize('admin'), async (req, res) => {
     `;
     const params = [];
     
-    if (storeId) {
-      querySql += ' AND o.store_id = ?';
-      params.push(storeId);
+    if (req.user.role === 'admin' && storeId) {
+      querySql += ` AND (o.store_id = ? OR (o.store_id IS NULL AND (o.assigned_to IN (SELECT id FROM users WHERE store_id = ?) OR o.created_by IN (SELECT id FROM users WHERE store_id = ?))))`;
+      params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
 
     querySql += ' GROUP BY c.id, c.name, c.phone ORDER BY total_spent DESC LIMIT ?';
@@ -385,7 +415,7 @@ router.get('/top-products', authorize('admin'), async (req, res) => {
     }
 
     // Admin can see all stores if no store_id, or filter by store_id if provided
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     let querySql = `
       SELECT 
         p.id,
@@ -407,9 +437,13 @@ router.get('/top-products', authorize('admin'), async (req, res) => {
     `;
     const params = [];
     
-    if (storeId) {
-      querySql += ' AND o.store_id = ?';
-      params.push(storeId);
+    if (req.user.role === 'admin' && storeId) {
+      querySql += ` AND (o.store_id = ? OR (o.store_id IS NULL AND (o.assigned_to IN (SELECT id FROM users WHERE store_id = ?) OR o.created_by IN (SELECT id FROM users WHERE store_id = ?))))`;
+      params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
 
     querySql += ' GROUP BY p.id, p.name, p.unit ORDER BY total_revenue DESC LIMIT ?';
@@ -464,7 +498,7 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
       `;
       const params = [monthStr, monthYearValidation.year];
       
-      const storeId = getStoreIdFilter(req);
+      const storeId = await resolveStoreIdForAdmin(req);
       if (storeId) {
         querySql += ' AND t.store_id = ?';
         params.push(storeId);
@@ -496,7 +530,7 @@ router.get('/revenue-by-store', authorize('admin'), async (req, res) => {
       `;
       const params = [monthStr, monthYearValidation.year];
       
-      const storeId = getStoreIdFilter(req);
+      const storeId = await resolveStoreIdForAdmin(req);
       if (storeId) {
         querySql += ' AND t.store_id = ?';
         params.push(storeId);
@@ -576,7 +610,16 @@ router.get('/export', authorize('admin', 'employer'), async (req, res) => {
 
     const monthNum = parseInt(month) || new Date().getMonth() + 1;
     const yearNum = parseInt(year) || new Date().getFullYear();
-    const storeId = getStoreIdFilter(req) || (store_id && store_id !== 'all' ? parseInt(store_id) : null);
+    let storeId = await resolveStoreIdForAdmin(req);
+    if (!storeId && store_id && store_id !== 'all') {
+      const sid = parseInt(store_id);
+      if (req.user.role === 'admin') {
+        const row = await queryOne('SELECT 1 FROM stores WHERE id = ? AND admin_id = ?', [sid, req.user.id]);
+        if (row) storeId = sid;
+      } else {
+        storeId = sid;
+      }
+    }
 
     let data = [];
     let fileName = '';
@@ -1057,7 +1100,7 @@ router.get('/revenue-by-product-daily', authorize('admin', 'employer'), async (r
     `;
     const params = [monthStr, monthYearValidation.year];
     
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     
     // Build store filter based on role
     if (req.user.role === 'employer') {
@@ -1180,7 +1223,7 @@ router.get('/revenue-by-category-daily', authorize('admin', 'employer'), async (
     `;
     const params = [monthStr, monthYearValidation.year];
     
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     
     // Build store filter based on role
     if (req.user.role === 'employer') {
@@ -1279,7 +1322,7 @@ router.get('/revenue-by-employee-daily', authorize('admin', 'employer'), async (
     `;
     const params = [monthStr, monthYearValidation.year];
     
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     
     // Build store filter based on role
     if (req.user.role === 'employer') {
@@ -1391,7 +1434,7 @@ router.get('/revenue-by-payment-daily', authorize('admin'), async (req, res) => 
     `;
     const params = [monthStr, monthYearValidation.year];
     
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     
     // Build store filter based on role
     if (req.user.role === 'employer') {
@@ -1416,6 +1459,10 @@ router.get('/revenue-by-payment-daily', authorize('admin'), async (req, res) => 
         )
       )`;
       params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
 
     querySql += ' GROUP BY DATE(o.updated_at), o.payment_method ORDER BY date DESC, payment_method';
@@ -1491,7 +1538,7 @@ router.get('/revenue-by-shift-daily', authorize('admin', 'employer'), async (req
     `;
     const params = [monthStr, monthYearValidation.year];
     
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     if (storeId) {
       querySql += ' AND t.store_id = ?';
       params.push(storeId);
@@ -1550,7 +1597,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
     const lastDay = new Date(monthYearValidation.year, monthYearValidation.month, 0).getDate();
 
     // Get revenue by day for the month, split by payment method
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     
     let querySql = `
       SELECT 
@@ -1759,7 +1806,7 @@ router.get('/invoices-daily', authorize('admin', 'employer'), async (req, res) =
     `;
     const params = [monthStr, monthYearValidation.year];
     
-    const storeId = getStoreIdFilter(req);
+    const storeId = await resolveStoreIdForAdmin(req);
     
     // Build store filter based on role
     if (req.user.role === 'employer') {
@@ -1784,6 +1831,10 @@ router.get('/invoices-daily', authorize('admin', 'employer'), async (req, res) =
         )
       )`;
       params.push(storeId, storeId, storeId);
+    } else if (req.user.role === 'admin') {
+      const { sql, params: p } = adminStoresOnlyFilter('o');
+      querySql += sql;
+      params.push(...p(req.user.id));
     }
 
     querySql += ' ORDER BY date DESC, o.created_at DESC';
