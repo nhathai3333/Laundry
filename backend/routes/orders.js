@@ -602,7 +602,7 @@ router.patch('/:id', auditLog('update', 'order'), async (req, res) => {
 // Update order status
 router.post('/:id/status', async (req, res) => {
   try {
-    const { status, payment_method } = req.body;
+    const { status, payment_method, withdrawn_amount } = req.body;
 
     if (!status) {
       return res.status(400).json({ error: 'Status is required' });
@@ -618,7 +618,7 @@ router.post('/:id/status', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Update status and payment_method
+    // Update status, payment_method, withdrawn_amount
     const updates = ['status = ?', 'updated_by = ?'];
     const values = [status, req.user.id];
     
@@ -628,6 +628,15 @@ router.post('/:id/status', async (req, res) => {
       }
       updates.push('payment_method = ?');
       values.push(payment_method);
+    }
+
+    if (status === 'completed' && withdrawn_amount !== undefined && withdrawn_amount !== null && withdrawn_amount !== '') {
+      const amount = parseFloat(withdrawn_amount);
+      if (isNaN(amount) || amount < 0) {
+        return res.status(400).json({ error: 'Số tiền rút phải là số không âm.' });
+      }
+      updates.push('withdrawn_amount = ?');
+      values.push(amount);
     }
     
     values.push(req.params.id);

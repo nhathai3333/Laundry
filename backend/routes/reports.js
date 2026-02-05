@@ -1605,6 +1605,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         SUM(o.final_amount) as total_revenue,
         SUM(CASE WHEN o.payment_method = 'cash' OR o.payment_method IS NULL THEN o.final_amount ELSE 0 END) as cash_revenue,
         SUM(CASE WHEN o.payment_method = 'transfer' THEN o.final_amount ELSE 0 END) as transfer_revenue,
+        COALESCE(SUM(o.withdrawn_amount), 0) as total_withdrawn,
         COUNT(*) as total_orders
       FROM orders o
       WHERE o.status = 'completed'
@@ -1705,6 +1706,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         total_revenue: parseFloat(row.total_revenue) || 0,
         cash_revenue: parseFloat(row.cash_revenue) || 0,
         transfer_revenue: parseFloat(row.transfer_revenue) || 0,
+        total_withdrawn: parseFloat(row.total_withdrawn) || 0,
         total_orders: parseInt(row.total_orders) || 0,
       };
     });
@@ -1717,6 +1719,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         total_revenue: 0, 
         cash_revenue: 0,
         transfer_revenue: 0,
+        total_withdrawn: 0,
         total_orders: 0 
       };
       result.push({
@@ -1725,6 +1728,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         total_revenue: revenueInfo.total_revenue,
         cash_revenue: revenueInfo.cash_revenue,
         transfer_revenue: revenueInfo.transfer_revenue,
+        total_withdrawn: revenueInfo.total_withdrawn,
         total_orders: revenueInfo.total_orders,
       });
     }
@@ -1733,6 +1737,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
     const totalRevenue = result.reduce((sum, day) => sum + day.total_revenue, 0);
     const totalCash = result.reduce((sum, day) => sum + day.cash_revenue, 0);
     const totalTransfer = result.reduce((sum, day) => sum + day.transfer_revenue, 0);
+    const totalWithdrawn = result.reduce((sum, day) => sum + day.total_withdrawn, 0);
     const totalOrders = result.reduce((sum, day) => sum + day.total_orders, 0);
 
     res.json({
@@ -1741,6 +1746,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         total_revenue: totalRevenue,
         total_cash: totalCash,
         total_transfer: totalTransfer,
+        total_withdrawn: totalWithdrawn,
         total_orders: totalOrders,
         average_daily_revenue: totalRevenue / lastDay,
       },

@@ -18,6 +18,7 @@ function AdminManagement() {
     name: '',
     phone: '',
     password: '',
+    trial_7days: false,
   });
   const [editFormData, setEditFormData] = useState({
     name: '',
@@ -115,6 +116,18 @@ function AdminManagement() {
     }
   };
 
+  const handleRevertToPending = async (id, name) => {
+    if (!confirm(`Chuyển admin "${name}" về trạng thái chờ phê duyệt? Tài khoản sẽ không đăng nhập được cho đến khi được phê duyệt lại.`)) return;
+    try {
+      await api.post(`/users/${id}/revert-to-pending`);
+      alert('Đã chuyển admin về chờ phê duyệt');
+      loadPendingAdmins();
+      loadAllAdmins();
+    } catch (error) {
+      alert(error.response?.data?.error || 'Chuyển trạng thái thất bại');
+    }
+  };
+
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.password) {
@@ -131,12 +144,13 @@ function AdminManagement() {
         phone: phone || null, // Cho phép null nếu không có phone
         password: formData.password,
         role: 'admin',
+        trial_7days: !!formData.trial_7days,
       };
       
-      // Không gửi store_id - để trống khi tạo admin
-      
       await api.post('/users', submitData);
-      alert('Tạo admin thành công! Admin sẽ ở trạng thái chờ phê duyệt.');
+      alert(formData.trial_7days
+        ? 'Tạo admin thành công! Admin được kích hoạt dùng thử 7 ngày.'
+        : 'Tạo admin thành công! Admin sẽ ở trạng thái chờ phê duyệt.');
       setShowModal(false);
       resetForm();
       loadPendingAdmins();
@@ -153,6 +167,7 @@ function AdminManagement() {
       name: '',
       phone: '',
       password: '',
+      trial_7days: false,
     });
   };
 
@@ -381,7 +396,8 @@ function AdminManagement() {
                       const packageNames = {
                         '3months': '3 tháng',
                         '6months': '6 tháng',
-                        '1year': '1 năm'
+                        '1year': '1 năm',
+                        '7days': 'Dùng thử 7 ngày'
                       };
                       const isExpired = admin.subscription_expires_at && new Date(admin.subscription_expires_at) < new Date();
                       const expiresAt = admin.subscription_expires_at 
@@ -437,19 +453,28 @@ function AdminManagement() {
                             {new Date(admin.created_at).toLocaleDateString('vi-VN')}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <button
                                 onClick={() => handleEditAdmin(admin)}
                                 className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
                               >
                                 Sửa
                               </button>
+                              {admin.status === 'active' && (() => {
+                                const { user: currentUser } = getAuth();
+                                if (currentUser && currentUser.id === admin.id) return null;
+                                return (
+                                  <button
+                                    onClick={() => handleRevertToPending(admin.id, admin.name)}
+                                    className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700"
+                                  >
+                                    Chờ phê duyệt
+                                  </button>
+                                );
+                              })()}
                               {(() => {
                                 const { user: currentUser } = getAuth();
-                                // Hide delete button if trying to delete yourself
-                                if (currentUser && currentUser.id === admin.id) {
-                                  return null;
-                                }
+                                if (currentUser && currentUser.id === admin.id) return null;
                                 return (
                                   <button
                                     onClick={() => handleDeleteAdmin(admin.id, admin.name)}
@@ -480,6 +505,23 @@ function AdminManagement() {
             <p className="text-gray-600 mb-4">Vui lòng chọn gói đăng ký cho admin này:</p>
             
             <div className="space-y-3 mb-6">
+              <label className={`flex items-center p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                selectedPackage === '7days' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="package"
+                  value="7days"
+                  checked={selectedPackage === '7days'}
+                  onChange={(e) => setSelectedPackage(e.target.value)}
+                  className="mr-3"
+                />
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-800">Dùng thử 7 ngày</div>
+                  <div className="text-sm text-gray-600">Hết hạn sau 7 ngày kể từ ngày kích hoạt</div>
+                </div>
+              </label>
+
               <label className={`flex items-center p-4 border-2 rounded-lg cursor-pointer transition-colors ${
                 selectedPackage === '3months' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
               }`}>
@@ -596,11 +638,23 @@ function AdminManagement() {
                 />
                 <PasswordRequirements password={formData.password} />
               </div>
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.trial_7days}
+                    onChange={(e) => setFormData({ ...formData, trial_7days: e.target.checked })}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Dùng thử 7 ngày</span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">Nếu chọn, admin được kích hoạt ngay với gói 7 ngày (không cần phê duyệt).</p>
+              </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                 <p className="font-medium">ℹ️ Thông tin:</p>
                 <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Admin mới sẽ ở trạng thái "Chờ phê duyệt" và cần được root phê duyệt.</li>
-                  <li>Khi phê duyệt, hệ thống sẽ tự động tạo: cửa hàng, tài khoản employer và nhân viên mặc định.</li>
+                  <li>Nếu không chọn dùng thử: admin ở trạng thái "Chờ phê duyệt" và cần root phê duyệt.</li>
+                  <li>Khi phê duyệt, chọn gói đăng ký (3 tháng, 6 tháng, 1 năm hoặc dùng thử 7 ngày).</li>
                 </ul>
               </div>
               <div className="flex gap-3 pt-4">
@@ -694,6 +748,9 @@ function AdminManagement() {
                         case '1year':
                           expirationDate.setFullYear(now.getFullYear() + 1);
                           break;
+                        case '7days':
+                          expirationDate.setDate(now.getDate() + 7);
+                          break;
                       }
                       setEditFormData(prev => ({
                         ...prev,
@@ -705,6 +762,7 @@ function AdminManagement() {
                   className="w-full px-3 py-2.5 border rounded-lg text-base"
                 >
                   <option value="">-- Không có gói --</option>
+                  <option value="7days">Dùng thử 7 ngày</option>
                   <option value="3months">3 tháng</option>
                   <option value="6months">6 tháng</option>
                   <option value="1year">1 năm</option>

@@ -31,6 +31,7 @@ function Home() {
   const [shouldPrint, setShouldPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [withdrawnAmount, setWithdrawnAmount] = useState('');
   const [applicablePromotions, setApplicablePromotions] = useState([]);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
   const [orderTotal, setOrderTotal] = useState(0);
@@ -218,16 +219,18 @@ function Home() {
     try {
       setPrinting(true);
       
-      // Update status to completed with payment method
+      // Update status to completed with payment method and withdrawn amount
       await api.post(`/orders/${orderToComplete.id}/status`, { 
         status: 'completed',
-        payment_method: paymentMethod
+        payment_method: paymentMethod,
+        withdrawn_amount: withdrawnAmount ? parseFloat(withdrawnAmount) : null
       });
 
       setShowCompleteModal(false);
       setOrderToComplete(null);
       setShouldPrint(false);
       setPaymentMethod('cash');
+      setWithdrawnAmount('');
       setPrinting(false);
       
       loadOrders();
@@ -341,6 +344,20 @@ function Home() {
         const customerResponse = await api.post('/promotions/applicable', requestData);
         const promotions = customerResponse.data.data || [];
         setApplicablePromotions(promotions);
+        // Tự động áp dụng khuyến mãi đầu tiên vào đơn (nhân viên không cần chọn)
+        if (promotions.length > 0) {
+          const promo = promotions[0];
+          let discount = 0;
+          if (promo.discount_type === 'percentage') {
+            discount = (total * promo.discount_value) / 100;
+            if (promo.max_discount_amount && discount > promo.max_discount_amount) discount = promo.max_discount_amount;
+          } else {
+            discount = promo.discount_value;
+          }
+          setOrderDiscount(discount);
+          setOrderFinal(total - discount);
+          setFormData((prev) => ({ ...prev, promotion_id: String(promo.id) }));
+        }
       } catch (error) {
         setApplicablePromotions([]);
       } finally {
@@ -1215,6 +1232,21 @@ function Home() {
                     </label>
                   </div>
                 </div>
+
+                <div className="min-w-0">
+                  <label className="block text-sm sm:text-base font-semibold text-gray-700 mb-1.5">
+                    Số tiền đã rút <span className="text-gray-500 font-normal text-xs">(tùy chọn)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder="0"
+                    value={withdrawnAmount}
+                    onChange={(e) => setWithdrawnAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1232,6 +1264,7 @@ function Home() {
                   setOrderToComplete(null);
                   setShouldPrint(false);
                   setPaymentMethod('cash');
+                  setWithdrawnAmount('');
                 }}
                 disabled={printing}
                 className="flex-1 min-w-0 bg-gray-200 text-gray-800 py-3 rounded-xl active:bg-gray-300 transition-colors touch-manipulation text-base font-medium"

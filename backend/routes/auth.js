@@ -76,6 +76,8 @@ const incrementFailedAttempts = async (userId, maxAttempts = MAX_LOGIN_ATTEMPTS,
 // Helper function to reset failed login attempts on successful login
 const resetFailedAttempts = async (userId) => {
   try {
+    // Check if security columns exist before UPDATE (avoid ER_BAD_FIELD_ERROR in DB)
+    await queryOne('SELECT failed_login_attempts FROM users WHERE id = ?', [userId]);
     await execute(`
       UPDATE users 
       SET failed_login_attempts = 0,
@@ -84,10 +86,8 @@ const resetFailedAttempts = async (userId) => {
       WHERE id = ?
     `, [userId]);
   } catch (error) {
-    // If columns don't exist, gracefully skip
     if (error.code === 'ER_BAD_FIELD_ERROR') {
-      console.warn('Security columns not found, skipping reset');
-      return;
+      return; // Columns don't exist, skip silently
     }
     console.error('Error resetting failed attempts:', error);
   }

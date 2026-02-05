@@ -96,7 +96,7 @@ router.get('/:id', authorize('admin'), async (req, res) => {
 // Create user (Root or Admin)
 router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.body.id || null), async (req, res) => {
   try {
-    const { name, phone, password, role, started_at, status, hourly_rate, shift_rate, store_id } = req.body;
+    const { name, phone, password, role, started_at, status, hourly_rate, shift_rate, store_id, trial_7days } = req.body;
 
     if (!name || !password || !role) {
       return res.status(400).json({ error: 'Name, password, and role are required' });
@@ -154,10 +154,10 @@ router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.bod
     const password_hash = await hashPassword(password);
 
     // Admin mới tạo bởi root sẽ có status 'pending', cần được root phê duyệt
-    // Root và employer tạo bởi admin sẽ có status 'active'
+    // Nếu chọn "Dùng thử 7 ngày" thì tạo admin active với gói 7 ngày
     let userStatus = status || 'active';
     if (role === 'admin' && req.user.role === 'root') {
-      userStatus = 'pending'; // Admin mới tạo bởi root sẽ pending
+      userStatus = trial_7days ? 'active' : 'pending';
     }
 
     // Password validation removed - no requirements
@@ -201,11 +201,25 @@ router.post('/', authorize('admin'), auditLog('create', 'user', (req) => req.bod
       storeId
     ]);
 
+    const newId = result.insertId;
+
+    // Nếu chọn "Dùng thử 7 ngày": cập nhật subscription cho admin vừa tạo
+    if (role === 'admin' && req.user.role === 'root' && trial_7days) {
+      const now = new Date();
+      const expirationDate = new Date(now);
+      expirationDate.setDate(expirationDate.getDate() + 7);
+      const expirationDateStr = expirationDate.toISOString().slice(0, 19).replace('T', ' ');
+      await execute(`
+        UPDATE users SET subscription_package = '7days', subscription_expires_at = ? WHERE id = ?
+      `, [expirationDateStr, newId]);
+    }
+
     const newUser = await queryOne(`
-      SELECT id, name, phone, role, status, started_at, hourly_rate, shift_rate, created_at, updated_at
+      SELECT id, name, phone, role, status, started_at, hourly_rate, shift_rate,
+             subscription_package, subscription_expires_at, store_id, created_at, updated_at
       FROM users
       WHERE id = ?
-    `, [result.insertId]);
+    `, [newId]);
 
     res.status(201).json({ data: newUser });
   } catch (error) {
@@ -331,6 +345,9 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
           case '1year':
             expirationDate.setFullYear(now.getFullYear() + 1);
             break;
+          case '7days':
+            expirationDate.setDate(now.getDate() + 7);
+            break;
           default:
             expirationDate = null;
         }
@@ -448,9 +465,9 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
     }
 
     // Validate package type
-    const validPackages = ['3months', '6months', '1year'];
+    const validPackages = ['3months', '6months', '1year', '7days'];
     if (!packageType || !validPackages.includes(packageType)) {
-      return res.status(400).json({ error: 'Vui lòng chọn gói: 3months, 6months, hoặc 1year' });
+      return res.status(400).json({ error: 'Vui lòng chọn gói: 3months, 6months, 1year, hoặc 7days' });
     }
 
     // Calculate expiration date based on package
@@ -466,6 +483,9 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
         break;
       case '1year':
         expirationDate.setFullYear(now.getFullYear() + 1);
+        break;
+      case '7days':
+        expirationDate.setDate(now.getDate() + 7);
         break;
     }
 
@@ -504,7 +524,8 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
     const packageNames = {
       '3months': '3 tháng',
       '6months': '6 tháng',
-      '1year': '1 năm'
+      '1year': '1 năm',
+      '7days': 'Dùng thử 7 ngày'
     };
 
     const message = `Admin đã được phê duyệt thành công với gói ${packageNames[packageType]}. Hết hạn: ${new Date(expirationDateStr).toLocaleDateString('vi-VN')}`;
@@ -515,6 +536,43 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
     });
   } catch (error) {
     console.error('Approve user error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Revert approved admin to pending (Root only) - chuyển về chờ phê duyệt
+router.post('/:id/revert-to-pending', authorize('admin'), auditLog('revert-to-pending', 'user'), async (req, res) => {
+  try {
+    if (req.user.role !== 'root') {
+      return res.status(403).json({ error: 'Chỉ root admin mới có thể chuyển trạng thái admin' });
+    }
+
+    const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.role !== 'admin') {
+      return res.status(400).json({ error: 'Chỉ có thể chuyển trạng thái admin' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(400).json({ error: 'Chỉ có thể chuyển admin đang hoạt động về chờ phê duyệt' });
+    }
+
+    await execute(`
+      UPDATE users SET status = 'pending', subscription_package = NULL, subscription_expires_at = NULL WHERE id = ?
+    `, [req.params.id]);
+
+    const updated = await queryOne(`
+      SELECT id, name, phone, role, status, started_at, hourly_rate, shift_rate,
+             subscription_expires_at, subscription_package, store_id, created_at, updated_at
+      FROM users WHERE id = ?
+    `, [req.params.id]);
+
+    res.json({ data: updated, message: 'Đã chuyển admin về trạng thái chờ phê duyệt' });
+  } catch (error) {
+    console.error('Revert to pending error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

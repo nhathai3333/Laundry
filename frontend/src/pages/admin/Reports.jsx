@@ -259,6 +259,7 @@ function Reports() {
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Số đơn</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tiền mặt</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Chuyển khoản</th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tiền rút</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tổng doanh thu</th>
           </>
         );
@@ -339,6 +340,7 @@ function Reports() {
         const hasRevenue = parseFloat(item.total_revenue) > 0;
         const cashAmount = parseFloat(item.cash_revenue) || 0;
         const transferAmount = parseFloat(item.transfer_revenue) || 0;
+        const withdrawnAmount = parseFloat(item.total_withdrawn) || 0;
         return (
           <tr 
             key={`${item.date}-${index}`} 
@@ -363,6 +365,11 @@ function Reports() {
               transferAmount > 0 ? 'text-blue-600' : 'text-gray-400'
             }`}>
               {new Intl.NumberFormat('vi-VN').format(transferAmount)} đ
+            </td>
+            <td className={`px-4 py-3 text-sm font-bold text-right ${
+              withdrawnAmount > 0 ? 'text-amber-600' : 'text-gray-400'
+            }`}>
+              {new Intl.NumberFormat('vi-VN').format(withdrawnAmount)} đ
             </td>
             <td className={`px-4 py-3 text-sm font-bold text-right ${
               hasRevenue ? 'text-green-600' : 'text-gray-400'
@@ -518,7 +525,7 @@ function Reports() {
             Tháng {selectedMonth}/{selectedYear}
           </p>
           {reportType === 'daily' && dailySummary && (
-            <div className="mt-4 grid grid-cols-5 gap-4">
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="bg-white bg-opacity-20 rounded-lg p-3">
                 <div className="text-xs text-blue-100">Tổng doanh thu</div>
                 <div className="text-lg font-bold text-white">
@@ -535,6 +542,12 @@ function Reports() {
                 <div className="text-xs text-blue-100">Tổng chuyển khoản</div>
                 <div className="text-lg font-bold text-white">
                   {new Intl.NumberFormat('vi-VN').format(dailySummary.total_transfer || 0)} đ
+                </div>
+              </div>
+              <div className="bg-white bg-opacity-20 rounded-lg p-3">
+                <div className="text-xs text-blue-100">Tổng tiền rút</div>
+                <div className="text-lg font-bold text-white">
+                  {new Intl.NumberFormat('vi-VN').format(dailySummary.total_withdrawn || 0)} đ
                 </div>
               </div>
               <div className="bg-white bg-opacity-20 rounded-lg p-3">
@@ -577,8 +590,9 @@ function Reports() {
                       total_orders: acc.total_orders + (parseInt(item.total_orders) || 0),
                       cash_revenue: acc.cash_revenue + (parseFloat(item.cash_revenue) || 0),
                       transfer_revenue: acc.transfer_revenue + (parseFloat(item.transfer_revenue) || 0),
+                      total_withdrawn: acc.total_withdrawn + (parseFloat(item.total_withdrawn) || 0),
                       total_revenue: acc.total_revenue + (parseFloat(item.total_revenue) || 0),
-                    }), { total_orders: 0, cash_revenue: 0, transfer_revenue: 0, total_revenue: 0 });
+                    }), { total_orders: 0, cash_revenue: 0, transfer_revenue: 0, total_withdrawn: 0, total_revenue: 0 });
                     
                     return (
                       <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-t-2 border-blue-300 font-bold">
@@ -593,6 +607,9 @@ function Reports() {
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-blue-700 text-right">
                           {new Intl.NumberFormat('vi-VN').format(totals.transfer_revenue)} đ
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold text-amber-700 text-right">
+                          {new Intl.NumberFormat('vi-VN').format(totals.total_withdrawn)} đ
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-green-700 text-right">
                           {new Intl.NumberFormat('vi-VN').format(totals.total_revenue)} đ

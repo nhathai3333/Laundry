@@ -287,7 +287,8 @@ async function ensureOrdersColumns(connection) {
         ddl: "ALTER TABLE orders ADD COLUMN payment_method ENUM('cash', 'transfer') DEFAULT NULL AFTER store_id"
       },
       { name: 'is_debt', ddl: 'ALTER TABLE orders ADD COLUMN is_debt TINYINT(1) NOT NULL DEFAULT 0 AFTER payment_method' },
-      { name: 'debt_paid_at', ddl: 'ALTER TABLE orders ADD COLUMN debt_paid_at DATETIME DEFAULT NULL AFTER is_debt' }
+      { name: 'debt_paid_at', ddl: 'ALTER TABLE orders ADD COLUMN debt_paid_at DATETIME DEFAULT NULL AFTER is_debt' },
+      { name: 'withdrawn_amount', ddl: 'ALTER TABLE orders ADD COLUMN withdrawn_amount DECIMAL(10, 2) DEFAULT NULL AFTER debt_paid_at' }
     ];
 
     for (const col of requiredColumns) {
