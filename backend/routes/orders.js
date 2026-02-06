@@ -486,7 +486,7 @@ router.post('/', auditLog('create', 'order'), async (req, res) => {
 // Update order
 router.patch('/:id', auditLog('update', 'order'), async (req, res) => {
   try {
-    const { status, assigned_to, note, items } = req.body;
+    const { status, assigned_to, note, items, customer_name, customer_phone } = req.body;
 
     const order = await queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);
     if (!order) {
@@ -517,6 +517,27 @@ router.patch('/:id', auditLog('update', 'order'), async (req, res) => {
       if (note !== undefined) {
         updates.push('note = ?');
         values.push(note);
+      }
+
+      // Update customer info if provided (sửa đơn - nhân viên)
+      if (customer_name !== undefined || customer_phone !== undefined) {
+        const nameVal = customer_name !== undefined ? String(customer_name).trim() : null;
+        const phoneVal = customer_phone !== undefined ? String(customer_phone).trim() || null : null;
+        if (order.customer_id) {
+          await db.execute(
+            'UPDATE customers SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE id = ?',
+            [nameVal, phoneVal, order.customer_id]
+          );
+        } else {
+          const tempPhone = phoneVal || `temp_${Date.now()}`;
+          const insertRes = await db.execute(
+            'INSERT INTO customers (name, phone) VALUES (?, ?)',
+            [nameVal || 'Khách vãng lai', tempPhone]
+          );
+          const newCustomerId = insertRes.insertId;
+          updates.push('customer_id = ?');
+          values.push(newCustomerId);
+        }
       }
 
       // Update items if provided
@@ -556,16 +577,15 @@ router.patch('/:id', auditLog('update', 'order'), async (req, res) => {
           `, [req.params.id, item.product_id, quantity, product.price, item.note ? item.note.trim() : null]);
         }
 
-        updates.push('total_amount = ?');
-        values.push(total);
+        updates.push('total_amount = ?', 'discount_amount = 0', 'final_amount = ?', 'promotion_id = ?');
+        values.push(total, total, null);
       }
 
       updates.push('updated_by = ?');
       values.push(req.user.id);
-      // MySQL handles updated_at automatically
       values.push(req.params.id);
 
-      if (updates.length > 1) { // More than just updated_by
+      if (updates.length > 1) {
         await db.execute(`
           UPDATE orders
           SET ${updates.join(', ')}

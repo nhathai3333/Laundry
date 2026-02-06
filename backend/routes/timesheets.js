@@ -195,13 +195,14 @@ router.get('/expected-revenue', async (req, res) => {
       return res.json({ data: { expected_revenue: 0, order_count: 0 } });
     }
 
-    // Calculate total revenue from completed orders in this shift
+    // Calculate total revenue and total withdrawn from completed orders in this shift
     // Tính tổng từ các đơn có status = 'completed' và được hoàn thành sau khi check-in
     // Filter by store_id if available
     let revenueQuery = `
       SELECT 
         COALESCE(SUM(final_amount), 0) as expected_revenue,
-        COUNT(*) as order_count
+        COUNT(*) as order_count,
+        COALESCE(SUM(withdrawn_amount), 0) as total_withdrawn
       FROM orders
       WHERE status = 'completed'
         AND updated_at >= ?
@@ -220,13 +221,15 @@ router.get('/expected-revenue', async (req, res) => {
 
     const expectedRevenue = revenueData?.expected_revenue || 0;
     const orderCount = revenueData?.order_count || 0;
+    const totalWithdrawn = parseFloat(revenueData?.total_withdrawn) || 0;
 
     // Debug log removed for security
 
     res.json({ 
       data: { 
         expected_revenue: expectedRevenue,
-        order_count: orderCount
+        order_count: orderCount,
+        total_withdrawn: totalWithdrawn
       } 
     });
   } catch (error) {
@@ -243,7 +246,7 @@ router.post('/check-out', async (req, res) => {
       return res.status(403).json({ error: 'Admin không thể check-out. Vui lòng sử dụng tài khoản nhân viên.' });
     }
 
-    const { note, revenue_amount, expected_revenue } = req.body;
+    const { note, revenue_amount, expected_revenue, withdrawn_amount: checkoutWithdrawn } = req.body;
     const userId = req.user.id;
     // Convert to MySQL datetime format (YYYY-MM-DD HH:MM:SS)
     const now = new Date();
@@ -294,7 +297,12 @@ router.post('/check-out', async (req, res) => {
     // Calculate hours
     const { regular, overtime } = calculateHours(timesheet.check_in, checkOut);
 
-    // Update timesheet with actual revenue and expected revenue
+    // withdrawn_amount at checkout (optional): parse if provided
+    const withdrawnValue = (checkoutWithdrawn !== undefined && checkoutWithdrawn !== null && checkoutWithdrawn !== '')
+      ? (parseFloat(checkoutWithdrawn) || null)
+      : null;
+
+    // Update timesheet with actual revenue, expected revenue, withdrawn_amount
     const updateResult = await execute(`
       UPDATE timesheets
       SET check_out = ?,
@@ -302,6 +310,7 @@ router.post('/check-out', async (req, res) => {
           overtime_hours = ?,
           revenue_amount = ?,
           expected_revenue = ?,
+          withdrawn_amount = ?,
           note = COALESCE(?, note)
       WHERE id = ?
     `, [
@@ -310,6 +319,7 @@ router.post('/check-out', async (req, res) => {
       overtime, 
       revenueValue, 
       expected_revenue || null, 
+      withdrawnValue, 
       note || null, 
       timesheet.id
     ]);

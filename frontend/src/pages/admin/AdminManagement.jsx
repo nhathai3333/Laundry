@@ -317,7 +317,7 @@ function AdminManagement() {
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tên</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">SĐT</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Cửa hàng</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Số cửa hàng</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Ngày tạo</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Thao tác</th>
                   </tr>
@@ -334,7 +334,9 @@ function AdminManagement() {
                       <tr key={admin.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-800">{admin.name}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{admin.phone}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{admin.store_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-center text-gray-600">
+                          {admin.role === 'root' ? '-' : (admin.store_count ?? 0)}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {new Date(admin.created_at).toLocaleDateString('vi-VN')}
                         </td>
@@ -376,7 +378,7 @@ function AdminManagement() {
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tên</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">SĐT</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Cửa hàng</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Số cửa hàng</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Trạng thái</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Gói đăng ký</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Ngày hết hạn</th>
@@ -408,7 +410,9 @@ function AdminManagement() {
                         <tr key={admin.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-800">{admin.name}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{admin.phone}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{admin.store_name || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-center text-gray-600">
+                            {admin.role === 'root' ? '-' : (admin.store_count ?? 0)}
+                          </td>
                           <td className="px-4 py-3 text-sm">
                             <span
                               className={`px-2 py-1 rounded-full text-xs font-medium ${

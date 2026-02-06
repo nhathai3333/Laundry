@@ -20,7 +20,8 @@ router.get('/', authorize('admin'), async (req, res) => {
         users = await query(`
           SELECT u.id, u.name, u.phone, u.role, u.status, u.started_at, u.hourly_rate, u.shift_rate, 
                  u.created_at, u.updated_at, u.store_id, s.name as store_name,
-                 u.subscription_expires_at, u.subscription_package
+                 u.subscription_expires_at, u.subscription_package,
+                 (SELECT COUNT(*) FROM stores st WHERE st.admin_id = u.id) as store_count
           FROM users u
           LEFT JOIN stores s ON u.store_id = s.id
           WHERE u.role IN ('admin', 'root')
@@ -47,11 +48,11 @@ router.get('/', authorize('admin'), async (req, res) => {
       // If stores table doesn't exist or error occurs, handle gracefully
       // Error log removed for security
       if (req.user.role === 'root') {
-        // Root can only see admin accounts even if stores table has issues
+        // Root can only see admin accounts even if stores table has issues (không dùng store_count ở đây vì stores có thể chưa có)
         users = await query(`
           SELECT u.id, u.name, u.phone, u.role, u.status, u.started_at, u.hourly_rate, u.shift_rate, 
                  u.created_at, u.updated_at, u.store_id, NULL as store_name,
-                 u.subscription_expires_at, u.subscription_package
+                 u.subscription_expires_at, u.subscription_package, 0 as store_count
           FROM users u
           WHERE u.role IN ('admin', 'root')
           ORDER BY u.created_at DESC

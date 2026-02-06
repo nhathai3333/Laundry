@@ -45,6 +45,9 @@ function Home() {
   const [debtOrders, setDebtOrders] = useState([]);
   const [debtOrdersLoading, setDebtOrdersLoading] = useState(false);
   const [debtSearchQuery, setDebtSearchQuery] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [orderToEdit, setOrderToEdit] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Sync viewTab from URL when user navigates (e.g. sidebar "Ghi nợ")
   useEffect(() => {
@@ -238,6 +241,67 @@ function Home() {
     } catch (error) {
       alert(error.response?.data?.error || 'Cập nhật thất bại');
       setPrinting(false);
+    }
+  };
+
+  const handleOpenEditOrder = (order) => {
+    if (!order.items || order.items.length === 0) {
+      alert('Đơn không có sản phẩm, không thể sửa.');
+      return;
+    }
+    setOrderToEdit(order);
+    setFormData({
+      customer_name: order.customer_name || '',
+      customer_phone: order.customer_phone || '0',
+      items: order.items.map((i) => ({
+        product_id: String(i.product_id),
+        quantity: String(i.quantity),
+      })),
+      note: order.note || '',
+      promotion_id: '',
+    });
+    setShowEditModal(true);
+    setApplicablePromotions([]);
+    setOrderTotal(parseFloat(order.total_amount) || 0);
+    setOrderDiscount(parseFloat(order.discount_amount) || 0);
+    setOrderFinal(parseFloat(order.final_amount) || parseFloat(order.total_amount) || 0);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setOrderToEdit(null);
+  };
+
+  const handleSubmitEditOrder = async (e) => {
+    e.preventDefault();
+    if (!orderToEdit) return;
+    const payload = {
+      customer_name: formData.customer_name || '',
+      customer_phone: formData.customer_phone || null,
+      note: formData.note || null,
+      items: formData.items
+        .filter((item) => item.product_id && item.quantity)
+        .map((item) => ({
+          product_id: parseInt(item.product_id),
+          quantity: parseFloat(item.quantity),
+        })),
+    };
+    if (payload.items.length === 0) {
+      alert('Vui lòng giữ ít nhất một sản phẩm');
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      await api.patch(`/orders/${orderToEdit.id}`, payload);
+      handleCloseEditModal();
+      loadOrders();
+      loadStats();
+      alert('Đã cập nhật đơn hàng.');
+    } catch (error) {
+      const msg = error.response?.data?.error || error.message || 'Sửa đơn thất bại';
+      alert(msg);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -685,54 +749,59 @@ function Home() {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="text-right">
-                    <div className="text-sm sm:text-base font-bold text-gray-800 leading-tight">
-                      {new Intl.NumberFormat('vi-VN').format(parseFloat(order.final_amount) || parseFloat(order.total_amount) || 0)} đ
-                    </div>
-                    {order.discount_amount > 0 && (
-                      <div className="text-[10px] text-gray-400 line-through">
-                        {new Intl.NumberFormat('vi-VN').format(parseFloat(order.total_amount) || 0)} đ
-                      </div>
-                    )}
+                <div className="text-right flex-shrink-0">
+                  <div className="text-sm sm:text-base font-bold text-gray-800 leading-tight">
+                    {new Intl.NumberFormat('vi-VN').format(parseFloat(order.final_amount) || parseFloat(order.total_amount) || 0)} đ
                   </div>
-                  {/* Status Actions */}
-                  {order.status === 'created' && (
-                    <div className="flex flex-col gap-1">
-                      <button
-                        onClick={() => handleCompleteClick(order)}
-                        className="px-2.5 py-1.5 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
-                      >
-                        ✓
-                      </button>
-                      <button
-                        onClick={() => handleMarkDebt(order)}
-                        className="px-2.5 py-1.5 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
-                      >
-                        Ghi nợ
-                      </button>
-                      <button
-                        onClick={async () => {
-                          setPrinting(true);
-                          try {
-                            const result = await printBill(order.id);
-                            alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
-                          } catch (printError) {
-                            console.error('Print error:', printError);
-                            alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
-                          } finally {
-                            setPrinting(false);
-                          }
-                        }}
-                        disabled={printing}
-                        className="px-2.5 py-1.5 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
-                      >
-                        {printing ? '...' : '🖨️'}
-                      </button>
+                  {order.discount_amount > 0 && (
+                    <div className="text-[10px] text-gray-400 line-through">
+                      {new Intl.NumberFormat('vi-VN').format(parseFloat(order.total_amount) || 0)} đ
                     </div>
                   )}
                 </div>
               </div>
+              {/* Nút thao tác: hàng ngang bên dưới, căn phải, kích thước bằng nhau */}
+              {order.status === 'created' && (
+                <div className="flex flex-row flex-wrap gap-2 mt-2 pt-2 border-t border-gray-100 justify-end">
+                  <button
+                    onClick={() => handleOpenEditOrder(order)}
+                    className="min-w-[5rem] py-1.5 bg-blue-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-600 active:bg-blue-700 whitespace-nowrap touch-manipulation"
+                    title="Sửa đơn"
+                  >
+                    Sửa
+                  </button>
+                  <button
+                    onClick={() => handleCompleteClick(order)}
+                    className="min-w-[5rem] py-1.5 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
+                  >
+                    ✓ Hoàn thành
+                  </button>
+                  <button
+                    onClick={() => handleMarkDebt(order)}
+                    className="min-w-[5rem] py-1.5 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
+                  >
+                    Ghi nợ
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setPrinting(true);
+                      try {
+                        const result = await printBill(order.id);
+                        alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
+                      } catch (printError) {
+                        console.error('Print error:', printError);
+                        alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                      } finally {
+                        setPrinting(false);
+                      }
+                    }}
+                    disabled={printing}
+                    className="min-w-[5rem] py-1.5 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
+                  >
+                    {printing ? '...' : '🖨️ In bill'}
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
@@ -1151,6 +1220,132 @@ function Home() {
                   Hủy
                 </button>
               </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Order Modal (nhân viên) */}
+      {showEditModal && orderToEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-3 z-50 overflow-y-auto overflow-x-hidden">
+          <div className="bg-white rounded-lg max-w-xl w-full max-h-[90vh] flex flex-col my-auto shadow-2xl">
+            <div className="flex items-center justify-between p-2.5 sm:p-3 md:p-4 pb-2 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-sm sm:text-base font-bold truncate pr-2">Sửa đơn hàng {orderToEdit.code}</h2>
+              <button
+                onClick={handleCloseEditModal}
+                className="text-gray-500 hover:text-gray-700 text-xl w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 sm:px-3 md:px-4">
+              <form onSubmit={handleSubmitEditOrder} className="space-y-2 min-w-0 py-2">
+                <div className="grid grid-cols-2 gap-1.5 sm:gap-2 min-w-0">
+                  <div className="min-w-0">
+                    <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">Tên khách hàng</label>
+                    <input
+                      type="text"
+                      value={formData.customer_name}
+                      onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                      className="w-full min-w-0 px-2 py-1.5 border rounded-lg text-xs sm:text-sm"
+                      placeholder="Tên khách hàng"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">SĐT</label>
+                    <input
+                      type="tel"
+                      value={formData.customer_phone}
+                      onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+                      className="w-full min-w-0 px-2 py-1.5 border rounded-lg text-xs sm:text-sm"
+                      placeholder="Số điện thoại"
+                    />
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">Sản phẩm</label>
+                  <div className="space-y-1.5 min-w-0">
+                    {formData.items.map((item, index) => (
+                      <div key={index} className="flex gap-1 min-w-0">
+                        <select
+                          value={item.product_id}
+                          onChange={(e) => handleItemChange(index, 'product_id', e.target.value)}
+                          className="flex-1 min-w-0 px-2 py-1.5 border rounded-lg text-xs sm:text-sm"
+                          required
+                        >
+                          <option value="">Chọn sản phẩm</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name} - {new Intl.NumberFormat('vi-VN').format(product.price)} đ/{product.unit}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.1"
+                          min="0.1"
+                          placeholder="SL"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                          className="w-20 min-w-0 px-2 py-1.5 border rounded-lg text-xs sm:text-sm"
+                          required
+                        />
+                        {formData.items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(index)}
+                            className="px-2 py-1.5 flex-shrink-0 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 text-[10px] sm:text-xs font-medium"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={handleAddItem}
+                      className="w-full min-w-0 px-2 py-1.5 text-xs sm:text-sm text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 font-medium"
+                    >
+                      + Thêm sản phẩm
+                    </button>
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <label className="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5">Ghi chú</label>
+                  <textarea
+                    value={formData.note}
+                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                    className="w-full min-w-0 px-2 py-1.5 border rounded-lg text-xs sm:text-sm resize-none"
+                    rows="2"
+                    placeholder="Ghi chú (tùy chọn)"
+                  />
+                </div>
+                {orderTotal > 0 && (
+                  <div className="bg-gray-50 p-2 rounded-lg">
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-gray-600">Thành tiền:</span>
+                      <span className="text-blue-600">{new Intl.NumberFormat('vi-VN').format(orderTotal)} đ</span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-1.5 pt-2 border-t border-gray-200">
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-semibold text-sm disabled:opacity-50"
+                  >
+                    {savingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCloseEditModal}
+                    className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 font-medium text-sm"
+                  >
+                    Hủy
+                  </button>
+                </div>
               </form>
             </div>
           </div>

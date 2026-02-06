@@ -1526,6 +1526,7 @@ router.get('/revenue-by-shift-daily', authorize('admin', 'employer'), async (req
         TIME(t.check_out) as check_out_time,
         t.expected_revenue as start_revenue,
         t.revenue_amount as end_revenue,
+        COALESCE(t.withdrawn_amount, 0) as withdrawn_amount,
         t.note,
         t.regular_hours,
         t.overtime_hours
@@ -1605,7 +1606,6 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         SUM(o.final_amount) as total_revenue,
         SUM(CASE WHEN o.payment_method = 'cash' OR o.payment_method IS NULL THEN o.final_amount ELSE 0 END) as cash_revenue,
         SUM(CASE WHEN o.payment_method = 'transfer' THEN o.final_amount ELSE 0 END) as transfer_revenue,
-        COALESCE(SUM(o.withdrawn_amount), 0) as total_withdrawn,
         COUNT(*) as total_orders
       FROM orders o
       WHERE o.status = 'completed'
@@ -1613,7 +1613,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         AND DATE_FORMAT(o.updated_at, '%Y') = ?
     `;
     const params = [monthStr, monthYearValidation.year];
-    
+
     // Build store filter based on role
     if (req.user.role === 'employer') {
       if (storeId) {
@@ -1649,6 +1649,35 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
     querySql += ' GROUP BY DATE(o.updated_at) ORDER BY date DESC';
 
     const revenueData = await query(querySql, params);
+
+    // Tổng tiền đã rút = tổng withdrawn_amount của mỗi nhân viên mỗi ca trong ngày (từ timesheets)
+    let withdrawnSql = `
+      SELECT 
+        DATE(t.check_in) as date,
+        COALESCE(SUM(t.withdrawn_amount), 0) as total_withdrawn
+      FROM timesheets t
+      WHERE t.check_out IS NOT NULL
+        AND DATE_FORMAT(t.check_in, '%m') = ?
+        AND DATE_FORMAT(t.check_in, '%Y') = ?
+    `;
+    const withdrawnParams = [monthStr, monthYearValidation.year];
+    if (storeId) {
+      withdrawnSql += ' AND t.store_id = ?';
+      withdrawnParams.push(storeId);
+    } else if (req.user.role === 'employer') {
+      withdrawnSql += ' AND t.user_id = ?';
+      withdrawnParams.push(req.user.id);
+    } else if (req.user.role === 'admin') {
+      withdrawnSql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+      withdrawnParams.push(req.user.id);
+    }
+    withdrawnSql += ' GROUP BY DATE(t.check_in)';
+    const withdrawnData = await query(withdrawnSql, withdrawnParams);
+    const withdrawnMap = {};
+    withdrawnData.forEach((row) => {
+      const dateKey = row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date).split(' ')[0];
+      withdrawnMap[dateKey] = parseFloat(row.total_withdrawn) || 0;
+    });
     
     // Debug: Check if there are any completed orders in this month
     const debugQuery = `
@@ -1698,37 +1727,27 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
     // MySQL DATE() returns date as string in YYYY-MM-DD format
     const revenueMap = {};
     revenueData.forEach((row) => {
-      // Ensure date is in YYYY-MM-DD format (MySQL DATE() returns this format)
-      const dateKey = row.date instanceof Date 
-        ? row.date.toISOString().split('T')[0] 
-        : String(row.date).split(' ')[0]; // Handle both Date object and string
+      const dateKey = row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date).split(' ')[0];
       revenueMap[dateKey] = {
         total_revenue: parseFloat(row.total_revenue) || 0,
         cash_revenue: parseFloat(row.cash_revenue) || 0,
         transfer_revenue: parseFloat(row.transfer_revenue) || 0,
-        total_withdrawn: parseFloat(row.total_withdrawn) || 0,
         total_orders: parseInt(row.total_orders) || 0,
       };
     });
 
-    // Fill all days in the month (even if no revenue)
+    // Fill all days in the month; total_withdrawn lấy từ timesheets (mỗi nhân viên mỗi ca)
     const result = [];
     for (let day = lastDay; day >= 1; day--) {
       const dateStr = `${monthYearValidation.year}-${monthStr}-${String(day).padStart(2, '0')}`;
-      const revenueInfo = revenueMap[dateStr] || { 
-        total_revenue: 0, 
-        cash_revenue: 0,
-        transfer_revenue: 0,
-        total_withdrawn: 0,
-        total_orders: 0 
-      };
+      const revenueInfo = revenueMap[dateStr] || { total_revenue: 0, cash_revenue: 0, transfer_revenue: 0, total_orders: 0 };
       result.push({
         date: dateStr,
         day: day,
         total_revenue: revenueInfo.total_revenue,
         cash_revenue: revenueInfo.cash_revenue,
         transfer_revenue: revenueInfo.transfer_revenue,
-        total_withdrawn: revenueInfo.total_withdrawn,
+        total_withdrawn: withdrawnMap[dateStr] ?? 0,
         total_orders: revenueInfo.total_orders,
       });
     }

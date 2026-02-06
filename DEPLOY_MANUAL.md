@@ -145,6 +145,9 @@ Copy kết quả và paste vào `JWT_SECRET` trong file `.env`.
 # Nhập password root MySQL
 ```
 
+DROP DATABASE IF EXISTS laundry66;
+
+
 Trong MySQL console, chạy các lệnh sau:
 
 ```sql
@@ -294,7 +297,6 @@ pm2 logs laundry-backend
 curl http://localhost:5000/api/health
 ```
     sudo mysql -u root -p
-DROP DATABASE IF EXISTS laundry66;
 INSERT INTO users (name, phone, password_hash, role, status) VALUES ('Root Admin', 'root', '123456', 'root', 'active');
 
 -- Kiểm tra

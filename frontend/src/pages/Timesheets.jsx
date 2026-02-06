@@ -19,6 +19,8 @@ function Timesheets() {
   const [checkoutNote, setCheckoutNote] = useState('');
   const [expectedRevenue, setExpectedRevenue] = useState(0);
   const [expectedOrderCount, setExpectedOrderCount] = useState(0);
+  const [totalWithdrawn, setTotalWithdrawn] = useState(0);
+  const [checkoutWithdrawnAmount, setCheckoutWithdrawnAmount] = useState('');
   const [dailyHours, setDailyHours] = useState([]);
   const [dailyHoursLoading, setDailyHoursLoading] = useState(false);
   const [viewMode, setViewMode] = useState(isAdmin() ? 'list' : 'list'); // 'list', 'daily', 'payroll'
@@ -173,16 +175,18 @@ function Timesheets() {
 
   const handleCheckOutClick = async () => {
     try {
-      // Get expected revenue from completed orders in this shift
+      // Get expected revenue and total withdrawn from completed orders in this shift
       const response = await api.get('/timesheets/expected-revenue');
       setExpectedRevenue(response.data.data.expected_revenue || 0);
       setExpectedOrderCount(response.data.data.order_count || 0);
+      setTotalWithdrawn(response.data.data.total_withdrawn || 0);
       setRevenueAmount(response.data.data.expected_revenue || '');
       setShowCheckoutModal(true);
     } catch (error) {
       console.error('Error loading expected revenue:', error);
       setExpectedRevenue(0);
       setExpectedOrderCount(0);
+      setTotalWithdrawn(0);
       setRevenueAmount('');
       setShowCheckoutModal(true);
     }
@@ -208,6 +212,9 @@ function Timesheets() {
       const response = await api.post('/timesheets/check-out', {
         revenue_amount: revenueValue,
         expected_revenue: expectedRevenue || 0,
+        withdrawn_amount: checkoutWithdrawnAmount !== '' && checkoutWithdrawnAmount != null
+          ? parseFloat(checkoutWithdrawnAmount)
+          : null,
         note: checkoutNote || null,
       });
       
@@ -216,8 +223,10 @@ function Timesheets() {
       setShowCheckoutModal(false);
       setRevenueAmount('');
       setCheckoutNote('');
+      setCheckoutWithdrawnAmount('');
       setExpectedRevenue(0);
       setExpectedOrderCount(0);
+      setTotalWithdrawn(0);
       checkTodayStatus();
       loadTimesheets();
       if (isAdmin() && viewMode === 'daily') {
@@ -1139,6 +1148,31 @@ function Timesheets() {
                   </div>
                 </div>
 
+                {/* Số tiền đã rút trong ca (từ đơn) - chỉ hiển thị */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 sm:p-3">
+                  <div className="text-xs text-amber-700 mb-1">
+                    <span className="font-medium">Số tiền đã rút (từ đơn):</span>
+                  </div>
+                  <div className="text-lg sm:text-xl font-bold text-amber-700 break-words">
+                    {new Intl.NumberFormat('vi-VN').format(totalWithdrawn || 0)} đ
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    Số tiền rút (khi checkout) <span className="text-gray-500 font-normal">(tùy chọn)</span>
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    step="1"
+                    value={checkoutWithdrawnAmount}
+                    onChange={(e) => setCheckoutWithdrawnAmount(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-all touch-manipulation"
+                    placeholder="Nhập số tiền rút khi kết thúc ca"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     Số tiền thực tế (đ) *
@@ -1181,8 +1215,10 @@ function Timesheets() {
                     setShowCheckoutModal(false);
                     setRevenueAmount('');
                     setCheckoutNote('');
+                    setCheckoutWithdrawnAmount('');
                     setExpectedRevenue(0);
                     setExpectedOrderCount(0);
+                    setTotalWithdrawn(0);
                   }}
                   className="w-full bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm transition-all touch-manipulation"
                 >

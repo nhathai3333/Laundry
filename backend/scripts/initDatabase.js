@@ -379,6 +379,49 @@ async function ensureOrdersColumns(connection) {
   }
 }
 
+async function ensureTimesheetsColumns(connection) {
+  try {
+    const [tableCheck] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.tables
+      WHERE table_schema = ? AND table_name = 'timesheets'
+      `,
+      [DB_NAME]
+    );
+
+    if (!tableCheck?.[0] || tableCheck[0].count === 0) {
+      console.log('Timesheets table does not exist yet, skipping column check');
+      return;
+    }
+
+    const [check] = await connection.query(
+      `
+      SELECT COUNT(*) as count
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'timesheets' AND column_name = 'withdrawn_amount'
+      `,
+      [DB_NAME]
+    );
+
+    if (check?.[0]?.count > 0) {
+      console.log('✓ Column timesheets.withdrawn_amount already exists');
+      return;
+    }
+
+    await connection.query(
+      "ALTER TABLE timesheets ADD COLUMN withdrawn_amount DECIMAL(10, 2) DEFAULT NULL AFTER expected_revenue"
+    );
+    console.log('✓ Added column timesheets.withdrawn_amount');
+  } catch (error) {
+    if (error.code === 'ER_DUP_FIELDNAME') {
+      console.log('✓ Column timesheets.withdrawn_amount already exists');
+    } else {
+      console.error('Error in ensureTimesheetsColumns:', error.message);
+    }
+  }
+}
+
 async function ensureSettingsColumns(connection) {
   try {
     // First check if settings table exists
@@ -917,6 +960,9 @@ async function ensureSchema() {
       
       // Ensure orders table has store_id and payment_method columns
       await ensureOrdersColumns(connection);
+      
+      // Ensure timesheets table has withdrawn_amount column (số tiền rút khi checkout)
+      await ensureTimesheetsColumns(connection);
       
       // Ensure settings table has store_id column
       await ensureSettingsColumns(connection);
