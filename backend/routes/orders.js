@@ -108,9 +108,9 @@ router.get('/', async (req, res) => {
       params.push(date);
     }
 
-    // Ghi nợ: debt_only=1 => chỉ đơn ghi nợ (is_debt=1); mặc định loại trừ đơn ghi nợ chưa trả
+    // Ghi nợ: debt_only=1 => chỉ đơn đã đánh dấu ghi nợ (is_debt=1). Đơn mới tạo luôn is_debt=0, không hiện tab Ghi nợ.
     if (debt_only === '1' || debt_only === 'true') {
-      querySql += ' AND o.is_debt = 1';
+      querySql += ' AND COALESCE(o.is_debt, 0) = 1';
     } else {
       querySql += ' AND (o.is_debt = 0 OR o.is_debt IS NULL)';
     }
@@ -413,10 +413,10 @@ router.post('/', auditLog('create', 'order'), async (req, res) => {
         }
       }
 
-      // Create order
+      // Create order - is_debt=0 để đơn mới không xuất hiện trong tab Ghi nợ
       const orderResult = await db.execute(`
-        INSERT INTO orders (customer_id, code, status, assigned_to, note, total_amount, discount_amount, final_amount, promotion_id, store_id, created_by)
-        VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO orders (customer_id, code, status, assigned_to, note, total_amount, discount_amount, final_amount, promotion_id, store_id, created_by, is_debt)
+        VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, 0)
       `, [
         customer.id,
         code,

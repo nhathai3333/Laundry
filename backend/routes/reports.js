@@ -66,19 +66,17 @@ function validatePagination(page, limit, maxLimit = 100) {
   return { valid: true, page: pageNum, limit: limitNum };
 }
 
-// Helper function to validate month and year
+// Helper function to validate month and year (fallback to current month/year if missing)
 function validateMonthYear(month, year) {
-  const monthNum = parseInt(month);
-  const yearNum = parseInt(year);
-  
+  const now = new Date();
+  const monthNum = (month === undefined || month === null || month === '') ? now.getMonth() + 1 : parseInt(month, 10);
+  const yearNum = (year === undefined || year === null || year === '') ? now.getFullYear() : parseInt(year, 10);
   if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
     return { valid: false, error: 'Tháng phải từ 1 đến 12' };
   }
-  
   if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
     return { valid: false, error: 'Năm phải từ 2000 đến 2100' };
   }
-  
   return { valid: true, month: monthNum, year: yearNum };
 }
 
@@ -1137,9 +1135,12 @@ router.get('/revenue-by-product-daily', authorize('admin', 'employer'), async (r
 
     querySql += ' GROUP BY DATE(o.updated_at), p.id, p.name, p.unit ORDER BY date DESC, total_revenue DESC';
     
-    // Get total count
-    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT CONCAT(DATE(o.updated_at), "-", p.id)) as total FROM');
-    const countResult = await queryOne(countSql.replace(/ORDER BY[\s\S]*$/, ''), params);
+    // Get total count (remove GROUP BY/ORDER BY so COUNT returns one row with correct total)
+    const countSql = querySql
+      .replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT CONCAT(DATE(o.updated_at), "-", p.id)) as total FROM')
+      .replace(/\s*ORDER BY[\s\S]*$/, '')
+      .replace(/\s*GROUP BY[\s\S]*$/i, '');
+    const countResult = await queryOne(countSql, params);
     const total = countResult?.total || 0;
 
     // Add pagination
@@ -1259,8 +1260,11 @@ router.get('/revenue-by-category-daily', authorize('admin', 'employer'), async (
 
     querySql += ' GROUP BY DATE(o.updated_at), p.name ORDER BY date DESC, total_revenue DESC';
     
-    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT CONCAT(DATE(o.updated_at), "-", p.name)) as total FROM');
-    const countResult = await queryOne(countSql.replace(/ORDER BY[\s\S]*$/, ''), params);
+    const countSql = querySql
+      .replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT CONCAT(DATE(o.updated_at), "-", p.name)) as total FROM')
+      .replace(/\s*ORDER BY[\s\S]*$/, '')
+      .replace(/\s*GROUP BY[\s\S]*$/i, '');
+    const countResult = await queryOne(countSql, params);
     const total = countResult?.total || 0;
 
     querySql += ` LIMIT ? OFFSET ?`;
@@ -1351,8 +1355,11 @@ router.get('/revenue-by-employee-daily', authorize('admin', 'employer'), async (
 
     querySql += ' GROUP BY DATE(o.updated_at), u.id, u.name ORDER BY date DESC, total_revenue DESC';
     
-    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT CONCAT(DATE(o.updated_at), "-", u.id)) as total FROM');
-    const countResult = await queryOne(countSql.replace(/ORDER BY[\s\S]*$/, ''), params);
+    const countSql = querySql
+      .replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT CONCAT(DATE(o.updated_at), "-", u.id)) as total FROM')
+      .replace(/\s*ORDER BY[\s\S]*$/, '')
+      .replace(/\s*GROUP BY[\s\S]*$/i, '');
+    const countResult = await queryOne(countSql, params);
     const total = countResult?.total || 0;
 
     querySql += ` LIMIT ? OFFSET ?`;
@@ -1467,8 +1474,11 @@ router.get('/revenue-by-payment-daily', authorize('admin'), async (req, res) => 
 
     querySql += ' GROUP BY DATE(o.updated_at), o.payment_method ORDER BY date DESC, payment_method';
     
-    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT DATE(o.updated_at)) as total FROM');
-    const countResult = await queryOne(countSql.replace(/ORDER BY[\s\S]*$/, ''), params);
+    const countSql = querySql
+      .replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(DISTINCT DATE(o.updated_at)) as total FROM')
+      .replace(/\s*ORDER BY[\s\S]*$/, '')
+      .replace(/\s*GROUP BY[\s\S]*$/i, '');
+    const countResult = await queryOne(countSql, params);
     const total = countResult?.total || 0;
 
     querySql += ` LIMIT ? OFFSET ?`;
@@ -1554,8 +1564,8 @@ router.get('/revenue-by-shift-daily', authorize('admin', 'employer'), async (req
 
     querySql += ' ORDER BY date DESC, COALESCE(e.name, u.name), t.check_in DESC';
     
-    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
-    const countResult = await queryOne(countSql.replace(/ORDER BY[\s\S]*$/, ''), params);
+    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM').replace(/\s*ORDER BY[\s\S]*$/, '');
+    const countResult = await queryOne(countSql, params);
     const total = countResult?.total || 0;
 
     querySql += ` LIMIT ? OFFSET ?`;
@@ -1678,7 +1688,37 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
       const dateKey = row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date).split(' ')[0];
       withdrawnMap[dateKey] = parseFloat(row.total_withdrawn) || 0;
     });
-    
+
+    // Ghi chú theo ngày: lấy từ timesheets (check-out có ghi chú), gộp theo ngày (chỉ ghi chú không rỗng)
+    let notesSql = `
+      SELECT 
+        DATE(t.check_in) as date,
+        GROUP_CONCAT(NULLIF(TRIM(COALESCE(t.note, '')), '') SEPARATOR ' | ') as day_notes
+      FROM timesheets t
+      WHERE t.check_out IS NOT NULL
+        AND DATE_FORMAT(t.check_in, '%m') = ?
+        AND DATE_FORMAT(t.check_in, '%Y') = ?
+    `;
+    const notesParams = [monthStr, monthYearValidation.year];
+    if (storeId) {
+      notesSql += ' AND t.store_id = ?';
+      notesParams.push(storeId);
+    } else if (req.user.role === 'employer') {
+      notesSql += ' AND t.user_id = ?';
+      notesParams.push(req.user.id);
+    } else if (req.user.role === 'admin') {
+      notesSql += ' AND t.store_id IN (SELECT id FROM stores WHERE admin_id = ?)';
+      notesParams.push(req.user.id);
+    }
+    notesSql += ' GROUP BY DATE(t.check_in)';
+    const notesData = await query(notesSql, notesParams);
+    const notesMap = {};
+    notesData.forEach((row) => {
+      const dateKey = row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date).split(' ')[0];
+      const notes = (row.day_notes || '').trim();
+      notesMap[dateKey] = notes || null;
+    });
+
     // Debug: Check if there are any completed orders in this month
     const debugQuery = `
       SELECT 
@@ -1736,7 +1776,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
       };
     });
 
-    // Fill all days in the month; total_withdrawn lấy từ timesheets (mỗi nhân viên mỗi ca)
+    // Fill all days in the month; total_withdrawn và ghi chú lấy từ timesheets
     const result = [];
     for (let day = lastDay; day >= 1; day--) {
       const dateStr = `${monthYearValidation.year}-${monthStr}-${String(day).padStart(2, '0')}`;
@@ -1749,6 +1789,7 @@ router.get('/revenue-daily', authorize('admin', 'employer'), async (req, res) =>
         transfer_revenue: revenueInfo.transfer_revenue,
         total_withdrawn: withdrawnMap[dateStr] ?? 0,
         total_orders: revenueInfo.total_orders,
+        day_notes: notesMap[dateStr] ?? null,
       });
     }
 
@@ -1864,8 +1905,8 @@ router.get('/invoices-daily', authorize('admin', 'employer'), async (req, res) =
 
     querySql += ' ORDER BY date DESC, o.created_at DESC';
     
-    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
-    const countResult = await queryOne(countSql.replace(/ORDER BY[\s\S]*$/, ''), params);
+    const countSql = querySql.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM').replace(/\s*ORDER BY[\s\S]*$/, '');
+    const countResult = await queryOne(countSql, params);
     const total = countResult?.total || 0;
 
     querySql += ` LIMIT ? OFFSET ?`;

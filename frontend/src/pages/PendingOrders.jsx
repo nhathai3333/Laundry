@@ -10,7 +10,6 @@ function PendingOrders() {
   const [shouldPrint, setShouldPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [withdrawnAmount, setWithdrawnAmount] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -58,14 +57,12 @@ function PendingOrders() {
       await api.post(`/orders/${orderToComplete.id}/status`, {
         status: 'completed',
         payment_method: paymentMethod,
-        withdrawn_amount: withdrawnAmount ? parseFloat(withdrawnAmount) : null,
       });
 
       setShowCompleteModal(false);
       setOrderToComplete(null);
       setShouldPrint(false);
       setPaymentMethod('cash');
-      setWithdrawnAmount('');
       setPrinting(false);
       
       // Reload orders
@@ -351,20 +348,6 @@ function PendingOrders() {
                 </div>
               </div>
 
-              <div className="mb-4 min-w-0">
-                <label className="block text-sm sm:text-base font-semibold text-gray-700 mb-1.5">
-                  Số tiền đã rút <span className="text-gray-500 font-normal text-xs">(tùy chọn)</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  placeholder="0"
-                  value={withdrawnAmount}
-                  onChange={(e) => setWithdrawnAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
             </div>
 
             {/* Action Buttons */}
@@ -382,7 +365,6 @@ function PendingOrders() {
                   setOrderToComplete(null);
                   setShouldPrint(false);
                   setPaymentMethod('cash');
-                  setWithdrawnAmount('');
                 }}
                 className="flex-1 min-w-0 px-4 py-3 bg-gray-200 text-gray-800 rounded-xl active:bg-gray-300 transition-colors touch-manipulation text-base font-medium"
                 disabled={printing}

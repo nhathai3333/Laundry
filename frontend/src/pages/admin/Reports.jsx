@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../utils/api';
-import { isAdmin } from '../../utils/auth';
+import { isAdmin, isRoot } from '../../utils/auth';
 import { getSavedFilters, saveFilters } from '../../utils/filterStorage';
 
 function Reports() {
@@ -50,7 +50,8 @@ function Reports() {
   }, []);
 
   useEffect(() => {
-    // Only load data if reportType is valid
+    // Root không xem báo cáo theo cửa hàng; chỉ load khi admin/employer
+    if (isRoot()) return;
     if (validReportTypes.includes(reportType)) {
       loadData();
     }
@@ -249,6 +250,8 @@ function Reports() {
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Giờ ra</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Đầu ca</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Kết ca</th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Số tiền mặt thực tế</th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tiền đã rút</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Ghi chú</th>
           </>
         );
@@ -261,6 +264,7 @@ function Reports() {
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Chuyển khoản</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tiền rút</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tổng doanh thu</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Ghi chú</th>
           </>
         );
       default:
@@ -330,6 +334,12 @@ function Reports() {
             <td className="px-4 py-3 text-sm font-bold text-green-600 text-right">
               {new Intl.NumberFormat('vi-VN').format(parseFloat(item.end_revenue) || 0)} đ
             </td>
+            <td className="px-4 py-3 text-sm font-bold text-green-700 text-right">
+              {new Intl.NumberFormat('vi-VN').format(parseFloat(item.end_revenue) || 0)} đ
+            </td>
+            <td className="px-4 py-3 text-sm font-bold text-amber-600 text-right">
+              {new Intl.NumberFormat('vi-VN').format(parseFloat(item.withdrawn_amount) || 0)} đ
+            </td>
             <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={item.note || ''}>
               {item.note || '-'}
             </td>
@@ -376,12 +386,28 @@ function Reports() {
             }`}>
               {new Intl.NumberFormat('vi-VN').format(parseFloat(item.total_revenue) || 0)} đ
             </td>
+            <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={item.day_notes || ''}>
+              {item.day_notes || '-'}
+            </td>
           </tr>
         );
       default:
         return null;
     }
   };
+
+  // Root admin: báo cáo theo cửa hàng, cần đăng nhập bằng tài khoản admin cửa hàng
+  if (isRoot()) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Báo cáo</h1>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-amber-800">
+          <p className="font-medium">Báo cáo theo cửa hàng.</p>
+          <p className="mt-2">Vui lòng đăng nhập bằng tài khoản <strong>Admin cửa hàng</strong> để xem báo cáo doanh thu, ca làm việc, v.v.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

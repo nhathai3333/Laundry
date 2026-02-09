@@ -33,7 +33,6 @@ function EmployerHome() {
   const [shouldPrint, setShouldPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [withdrawnAmount, setWithdrawnAmount] = useState('');
   const [applicablePromotions, setApplicablePromotions] = useState([]);
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
@@ -115,11 +114,9 @@ function EmployerHome() {
     if (!orderToComplete) return;
 
     try {
-      // Update status to completed with payment method and withdrawn amount
       await api.post(`/orders/${orderToComplete.id}/status`, { 
         status: 'completed',
-        payment_method: paymentMethod,
-        withdrawn_amount: withdrawnAmount ? parseFloat(withdrawnAmount) : null
+        payment_method: paymentMethod
       });
 
       // Print bill if selected
@@ -142,7 +139,6 @@ function EmployerHome() {
       setOrderToComplete(null);
       setShouldPrint(false);
       setPaymentMethod('cash');
-      setWithdrawnAmount('');
       loadOrders();
       loadData(); // Reload stats
     } catch (error) {
@@ -838,21 +834,6 @@ function EmployerHome() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Số tiền đã rút <span className="text-gray-500">(tùy chọn)</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  placeholder="0"
-                  value={withdrawnAmount}
-                  onChange={(e) => setWithdrawnAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                 <input
                   type="checkbox"
@@ -879,7 +860,7 @@ function EmployerHome() {
                     setShowCompleteModal(false);
                     setOrderToComplete(null);
                     setShouldPrint(false);
-                    setWithdrawnAmount('');
+                    setPaymentMethod('cash');
                   }}
                   disabled={printing}
                   className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 font-medium text-base disabled:opacity-50"

@@ -41,7 +41,6 @@ function Orders() {
   const [shouldPrint, setShouldPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [withdrawnAmount, setWithdrawnAmount] = useState('');
 
   // Load products and stores only once on mount
   useEffect(() => {
@@ -218,11 +217,9 @@ function Orders() {
     if (!orderToComplete) return;
 
     try {
-      // Update status to completed with payment method and withdrawn amount
       await api.post(`/orders/${orderToComplete.id}/status`, { 
         status: 'completed',
-        payment_method: paymentMethod,
-        withdrawn_amount: withdrawnAmount ? parseFloat(withdrawnAmount) : null
+        payment_method: paymentMethod
       });
 
       // Print bill if selected
@@ -245,7 +242,6 @@ function Orders() {
       setOrderToComplete(null);
       setShouldPrint(false);
       setPaymentMethod('cash');
-      setWithdrawnAmount('');
       loadOrders();
     } catch (error) {
       alert(error.response?.data?.error || 'Cập nhật thất bại');
@@ -1228,21 +1224,6 @@ function Orders() {
                 </div>
               </div>
 
-              <div className="min-w-0">
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
-                  Số tiền đã rút <span className="text-gray-500">(tùy chọn)</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  placeholder="0"
-                  value={withdrawnAmount}
-                  onChange={(e) => setWithdrawnAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                  className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
               <div className="flex flex-col gap-2 pt-2 border-t border-gray-200 min-w-0">
                 <button
                   onClick={handleCompleteOrder}
@@ -1275,7 +1256,6 @@ function Orders() {
                     setOrderToComplete(null);
                     setShouldPrint(false);
                     setPaymentMethod('cash');
-                    setWithdrawnAmount('');
                   }}
                   disabled={printing}
                   className="w-full min-w-0 bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 active:bg-gray-400 font-medium text-sm transition-all touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"

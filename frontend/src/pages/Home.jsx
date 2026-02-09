@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { getAuth } from '../utils/auth';
+import { getAuth, isAdmin, isEmployer, getEmployeeId } from '../utils/auth';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDaysInMonth } from 'date-fns';
-import { isAdmin } from '../utils/auth';
 import { printBill } from '../utils/printBill';
 
 function Home() {
@@ -31,7 +30,6 @@ function Home() {
   const [shouldPrint, setShouldPrint] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [withdrawnAmount, setWithdrawnAmount] = useState('');
   const [applicablePromotions, setApplicablePromotions] = useState([]);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
   const [orderTotal, setOrderTotal] = useState(0);
@@ -48,6 +46,14 @@ function Home() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [orderToEdit, setOrderToEdit] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Check-in: chỉ áp dụng cho nhân viên (employer). Chưa check-in thì không mở form tạo đơn, hiện popup nhắc check-in.
+  const [todayCheckIn, setTodayCheckIn] = useState(null);
+  const [showCheckInPrompt, setShowCheckInPrompt] = useState(false);
+  const [checkInEmployees, setCheckInEmployees] = useState([]);
+  const [checkInEmployeeId, setCheckInEmployeeId] = useState('');
+  const [checkInNote, setCheckInNote] = useState('');
+  const [checkInLoading, setCheckInLoading] = useState(false);
+  const navigate = useNavigate();
 
   // Sync viewTab from URL when user navigates (e.g. sidebar "Ghi nợ")
   useEffect(() => {
@@ -67,6 +73,40 @@ function Home() {
       loadDebtOrders();
     }
   }, [viewTab]);
+
+  // Nhân viên: kiểm tra đã check-in hôm nay chưa (để chặn tạo đơn khi chưa check-in)
+  const checkTodayStatus = async () => {
+    if (isAdmin()) return;
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const response = await api.get(`/timesheets?date=${today}`);
+      const todayRecords = response.data.data || [];
+      const active = todayRecords.find((t) => !t.check_out);
+      setTodayCheckIn(active || null);
+    } catch (error) {
+      console.error('Error checking today status:', error);
+      setTodayCheckIn(null);
+    }
+  };
+
+  useEffect(() => {
+    if (isEmployer()) {
+      checkTodayStatus();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Khi mở popup "Chưa check-in", load danh sách nhân viên cho dropdown
+  useEffect(() => {
+    if (showCheckInPrompt && isEmployer()) {
+      const employeeIdFromToken = getEmployeeId();
+      setCheckInEmployeeId(employeeIdFromToken || '');
+      setCheckInNote('');
+      api.get('/timesheets/store-employees').then((res) => {
+        setCheckInEmployees(res.data.data || []);
+      }).catch(() => setCheckInEmployees([]));
+    }
+  }, [showCheckInPrompt]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -216,24 +256,46 @@ function Home() {
     }
   };
 
+  const handleCheckInFromPrompt = async () => {
+    const employeeIdToSend = getEmployeeId() || checkInEmployeeId || undefined;
+    if (!checkInEmployees.length && !employeeIdToSend) {
+      alert('Vui lòng chọn nhân viên hoặc liên hệ admin thêm danh sách nhân viên.');
+      return;
+    }
+    try {
+      setCheckInLoading(true);
+      await api.post('/timesheets/check-in', {
+        employee_id: employeeIdToSend,
+        note: checkInNote,
+      });
+      setShowCheckInPrompt(false);
+      setCheckInEmployeeId('');
+      setCheckInNote('');
+      await checkTodayStatus();
+      setShowModal(true);
+      alert('Đã check-in. Bạn có thể tạo đơn hàng.');
+    } catch (error) {
+      alert(error.response?.data?.error || 'Check-in thất bại');
+    } finally {
+      setCheckInLoading(false);
+    }
+  };
+
   const handleCompleteOrder = async () => {
     if (!orderToComplete) return;
 
     try {
       setPrinting(true);
       
-      // Update status to completed with payment method and withdrawn amount
       await api.post(`/orders/${orderToComplete.id}/status`, { 
         status: 'completed',
-        payment_method: paymentMethod,
-        withdrawn_amount: withdrawnAmount ? parseFloat(withdrawnAmount) : null
+        payment_method: paymentMethod
       });
 
       setShowCompleteModal(false);
       setOrderToComplete(null);
       setShouldPrint(false);
       setPaymentMethod('cash');
-      setWithdrawnAmount('');
       setPrinting(false);
       
       loadOrders();
@@ -694,7 +756,13 @@ function Home() {
             </select>
           </div>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              if (isEmployer() && !todayCheckIn) {
+                setShowCheckInPrompt(true);
+              } else {
+                setShowModal(true);
+              }
+            }}
             className="bg-blue-600 text-white px-4 py-2 sm:px-3 sm:py-1.5 rounded hover:bg-blue-700 active:bg-blue-800 text-sm sm:text-xs font-medium whitespace-nowrap w-full sm:w-auto"
           >
             + Tạo đơn
@@ -903,6 +971,77 @@ function Home() {
           );
         })()}
       </div>
+      )}
+
+      {/* Popup nhắc check-in khi nhân viên chưa check-in mà bấm Tạo đơn */}
+      {showCheckInPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-4">
+            <h3 className="text-base font-bold text-gray-800 mb-1">Chưa check-in</h3>
+            <p className="text-sm text-gray-600 mb-4">Vui lòng check-in trước khi tạo đơn hàng.</p>
+            {checkInEmployees.length > 0 ? (
+              <>
+                {!getEmployeeId() && (
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Chọn nhân viên</label>
+                    <select
+                      value={checkInEmployeeId}
+                      onChange={(e) => setCheckInEmployeeId(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                    >
+                      <option value="">-- Chọn tên của bạn --</option>
+                      {checkInEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>{emp.name}{emp.phone ? ` (${emp.phone})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {getEmployeeId() && (
+                  <div className="mb-3 text-xs text-gray-500">Nhân viên đã chọn khi đăng nhập.</div>
+                )}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Ghi chú (tùy chọn)</label>
+                  <input
+                    type="text"
+                    value={checkInNote}
+                    onChange={(e) => setCheckInNote(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                    placeholder="Ghi chú ca làm việc..."
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-amber-700 mb-4">Chưa có danh sách nhân viên. Vui lòng vào Chấm công để check-in hoặc liên hệ admin.</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCheckInFromPrompt}
+                disabled={checkInLoading || (checkInEmployees.length > 0 && !getEmployeeId() && !checkInEmployeeId)}
+                className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {checkInLoading ? 'Đang xử lý...' : 'Check-in ngay'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCheckInPrompt(false);
+                  navigate('/timesheets');
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-medium hover:bg-gray-300"
+              >
+                Đi đến Chấm công
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCheckInPrompt(false)}
+              className="mt-3 w-full text-gray-500 text-sm hover:text-gray-700"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Create Order Modal */}
@@ -1428,20 +1567,6 @@ function Home() {
                   </div>
                 </div>
 
-                <div className="min-w-0">
-                  <label className="block text-sm sm:text-base font-semibold text-gray-700 mb-1.5">
-                    Số tiền đã rút <span className="text-gray-500 font-normal text-xs">(tùy chọn)</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    placeholder="0"
-                    value={withdrawnAmount}
-                    onChange={(e) => setWithdrawnAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
               </div>
             </div>
 
@@ -1459,7 +1584,6 @@ function Home() {
                   setOrderToComplete(null);
                   setShouldPrint(false);
                   setPaymentMethod('cash');
-                  setWithdrawnAmount('');
                 }}
                 disabled={printing}
                 className="flex-1 min-w-0 bg-gray-200 text-gray-800 py-3 rounded-xl active:bg-gray-300 transition-colors touch-manipulation text-base font-medium"

@@ -906,9 +906,7 @@ function Timesheets() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Nhân viên</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Người đứng ca</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Số ca</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Giờ thường</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Giờ OT</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tổng giờ</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Giờ</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Lương/giờ</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Lương/ca</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tổng lương</th>
@@ -924,8 +922,6 @@ function Timesheets() {
                           {emp.user_name || '-'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 text-right">{emp.total_shifts}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{(parseFloat(emp.total_regular_hours) || 0).toFixed(2)}h</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{(parseFloat(emp.total_overtime_hours) || 0).toFixed(2)}h</td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{(parseFloat(emp.total_hours) || 0).toFixed(2)}h</td>
                         <td className="px-4 py-3 text-sm text-gray-600 text-right">
                           {emp.hourly_rate > 0 ? new Intl.NumberFormat('vi-VN').format(emp.hourly_rate) + ' đ/h' : '-'}
@@ -944,12 +940,6 @@ function Timesheets() {
                       <td colSpan="2" className="px-4 py-3 text-sm text-gray-800">Tổng cộng</td>
                       <td className="px-4 py-3 text-sm text-gray-600 text-right">
                         {payroll.reduce((sum, emp) => sum + emp.total_shifts, 0)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 text-right">
-                        {payroll.reduce((sum, emp) => sum + (parseFloat(emp.total_regular_hours) || 0), 0).toFixed(2)}h
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 text-right">
-                        {payroll.reduce((sum, emp) => sum + (parseFloat(emp.total_overtime_hours) || 0), 0).toFixed(2)}h
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-800 text-right">
                         {payroll.reduce((sum, emp) => sum + (parseFloat(emp.total_hours) || 0), 0).toFixed(2)}h
@@ -980,9 +970,7 @@ function Timesheets() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Ngày</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Check-in</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Check-out</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Giờ thường</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tăng ca</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tổng giờ</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Giờ</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Doanh thu ca</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Ghi chú</th>
                   </tr>
@@ -990,7 +978,7 @@ function Timesheets() {
                 <tbody className="divide-y">
                   {timesheets.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
                         Chưa có dữ liệu chấm công
                       </td>
                     </tr>
@@ -1015,12 +1003,6 @@ function Timesheets() {
                             : <span className="px-3 py-1 bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 rounded-full text-xs font-semibold shadow-sm border border-yellow-200">Đang làm việc</span>
                           }
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
-                          {(parseFloat(timesheet.regular_hours) || 0).toFixed(2)}h
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
-                          {parseFloat(timesheet.overtime_hours) > 0 ? `${parseFloat(timesheet.overtime_hours).toFixed(2)}h` : '-'}
-                        </td>
                         <td className="px-4 py-3 text-right font-medium text-gray-800">
                           {(parseFloat(timesheet.regular_hours || 0) + parseFloat(timesheet.overtime_hours || 0)).toFixed(2)}h
                         </td>
@@ -1039,12 +1021,6 @@ function Timesheets() {
                   <tfoot className="bg-gray-50 font-semibold">
                     <tr>
                       <td colSpan="5" className="px-4 py-3 text-gray-800">Tổng cộng</td>
-                      <td className="px-4 py-3 text-right text-gray-800">
-                        {timesheets.reduce((sum, t) => sum + (parseFloat(t.regular_hours) || 0), 0).toFixed(2)}h
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-800">
-                        {timesheets.reduce((sum, t) => sum + (parseFloat(t.overtime_hours) || 0), 0).toFixed(2)}h
-                      </td>
                       <td className="px-4 py-3 text-right text-gray-800">
                         {timesheets.reduce((sum, t) => sum + ((parseFloat(t.regular_hours) || 0) + (parseFloat(t.overtime_hours) || 0)), 0).toFixed(2)}h
                       </td>
@@ -1087,15 +1063,7 @@ function Timesheets() {
                               {new Date(timesheet.check_out).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                             </p>
                             <p>
-                              <span className="font-medium">Giờ thường:</span> {(parseFloat(timesheet.regular_hours) || 0).toFixed(2)}h
-                            </p>
-                            {parseFloat(timesheet.overtime_hours) > 0 && (
-                              <p>
-                                <span className="font-medium">Tăng ca:</span> {parseFloat(timesheet.overtime_hours).toFixed(2)}h
-                              </p>
-                            )}
-                            <p>
-                              <span className="font-medium">Tổng:</span>{' '}
+                              <span className="font-medium">Giờ:</span>{' '}
                               {(parseFloat(timesheet.regular_hours || 0) + parseFloat(timesheet.overtime_hours || 0)).toFixed(2)}h
                             </p>
                           </>

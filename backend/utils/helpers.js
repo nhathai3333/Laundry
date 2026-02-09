@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { queryOne } from '../database/db.js';
-import { MAX_ORDER_CODE_GENERATION_ATTEMPTS, REGULAR_HOURS_PER_DAY } from './constants.js';
+import { MAX_ORDER_CODE_GENERATION_ATTEMPTS } from './constants.js';
 
 export const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
@@ -44,6 +44,10 @@ export const generateOrderCode = async () => {
   throw new Error('Không thể tạo mã đơn hàng duy nhất sau nhiều lần thử');
 };
 
+/**
+ * Tính giờ làm từ check-in đến check-out.
+ * Toàn bộ giờ làm đều tính là giờ thường (không tách tăng ca).
+ */
 export const calculateHours = (checkIn, checkOut) => {
   if (!checkOut) return { regular: 0, overtime: 0 };
   
@@ -51,13 +55,11 @@ export const calculateHours = (checkIn, checkOut) => {
   const end = new Date(checkOut);
   const diffMs = end - start;
   const diffHours = diffMs / (1000 * 60 * 60);
-  
-  const regularHours = Math.min(diffHours, REGULAR_HOURS_PER_DAY);
-  const overtimeHours = Math.max(0, diffHours - REGULAR_HOURS_PER_DAY);
+  const totalHours = Math.max(0, diffHours);
   
   return {
-    regular: Math.round(regularHours * 100) / 100,
-    overtime: Math.round(overtimeHours * 100) / 100
+    regular: Math.round(totalHours * 100) / 100,
+    overtime: 0
   };
 };
 
