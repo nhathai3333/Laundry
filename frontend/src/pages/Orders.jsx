@@ -682,16 +682,16 @@ function Orders() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {order.status === 'created' && (
-                        <div className="flex gap-2 flex-wrap justify-center">
+                        <div className="flex gap-1.5 sm:gap-2 flex-nowrap justify-center overflow-x-auto">
                           <button
                             onClick={() => handleCompleteClick(order)}
-                            className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                            className="flex-shrink-0 px-2 sm:px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 whitespace-nowrap"
                           >
                             Hoàn thành
                           </button>
                           <button
                             onClick={() => handleMarkDebt(order)}
-                            className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600"
+                            className="flex-shrink-0 px-2 sm:px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600 whitespace-nowrap"
                           >
                             Ghi nợ
                           </button>
@@ -709,7 +709,7 @@ function Orders() {
                               }
                             }}
                             disabled={printing}
-                            className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+                            className="flex-shrink-0 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
                           >
                             {printing ? 'Đang in...' : 'In bill'}
                           </button>
@@ -804,18 +804,18 @@ function Orders() {
                   </div>
                 )}
 
-                <div className="border-t pt-3 mt-3 flex flex-wrap gap-2">
+                <div className="border-t pt-3 mt-3 flex flex-nowrap gap-1.5 sm:gap-2 overflow-x-auto">
                   {order.status === 'created' && (
                     <>
                       <button
                         onClick={() => handleCompleteClick(order)}
-                        className="flex-1 min-w-0 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                        className="flex-shrink-0 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm whitespace-nowrap"
                       >
                         ✓ Hoàn thành
                       </button>
                       <button
                         onClick={() => handleMarkDebt(order)}
-                        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
+                        className="flex-shrink-0 px-3 sm:px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium text-sm whitespace-nowrap"
                       >
                         Ghi nợ
                       </button>
@@ -835,7 +835,7 @@ function Orders() {
                       }
                     }}
                     disabled={printing}
-                    className={`${order.status === 'created' ? 'flex-1' : 'w-full'} px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50`}
+                    className="flex-shrink-0 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm disabled:opacity-50 whitespace-nowrap"
                   >
                     {printing ? 'Đang in...' : 'In bill'}
                   </button>

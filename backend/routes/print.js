@@ -5,6 +5,7 @@ import { authorize } from '../middleware/auth.js';
 import { validateId } from '../utils/validators.js';
 import { isValidIP } from '../utils/ipValidator.js';
 import net from 'net';
+import iconv from 'iconv-lite';
 
 const router = express.Router();
 
@@ -249,6 +250,14 @@ router.post('/bill/:orderId', async (req, res) => {
       settingsObj[s.key] = s.value;
     });
 
+    // When print_method is bluetooth, server must NOT send to printer — user device connects to Bluetooth printer and prints
+    const printMethod = settingsObj.print_method || 'server';
+    if (printMethod === 'bluetooth') {
+      return res.status(400).json({
+        error: 'Phương thức in đang là Bluetooth. Vui lòng in từ thiết bị của bạn (kết nối Bluetooth với máy in).'
+      });
+    }
+
     const printerIP = settingsObj.printer_ip || '192.168.1.100';
     const ipValidation = isValidIP(printerIP);
     if (!ipValidation.valid) {
@@ -385,7 +394,10 @@ function generateBill(order, items, paperSize, settingsObj = {}) {
   // Cut paper
   commands.push(GS + 'V' + '\x41' + '\x03');
 
-  return Buffer.from(commands.join(''), 'utf8');
+  // Encode as Windows-1258 (Vietnamese) so thermal printer shows đúng dấu.
+  // Nhiều máy in nhiệt đọc TCVN3/VNI/1258, không UTF-8 → gửi UTF-8 bị lỗi "Mß lịc", "Cßm ơn quÝ khÞch".
+  const text = commands.join('');
+  return iconv.encode(text, 'win1258');
 }
 
 function sendToPrinter(ip, port, data) {
