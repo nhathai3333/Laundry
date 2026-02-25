@@ -421,24 +421,7 @@ function Settings() {
                 </p>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nội dung QR chuyển khoản (khuyến nghị)
-                </label>
-                <textarea
-                  value={settings.bill_qr_content || ''}
-                  onChange={(e) => setSettings({ ...settings, bill_qr_content: e.target.value })}
-                  className="w-full px-3 py-2.5 border rounded-lg text-base"
-                  placeholder="Ví dụ: 9704229123456789 hoặc Ngân hàng ABC - STK 1234567890 - Chủ TK Nguyễn Văn A"
-                  rows={3}
-                  maxLength={500}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Nhập số tài khoản, tên ngân hàng, hoặc nội dung chuyển khoản. Hệ thống sẽ <strong>tự tạo mã QR</strong> và in dưới bill. Cách này ổn định, không cần upload ảnh.
-                </p>
-              </div>
-
-              <div className="mb-4">
+              {/* <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Ảnh QR chuyển khoản (dự phòng)
                 </label>
@@ -486,7 +469,7 @@ function Settings() {
                     className="w-full text-sm text-gray-600 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:bg-gray-100 file:text-gray-700"
                   />
                 )}
-              </div>
+              </div> */}
             </div>
 
           <div className="pt-4">

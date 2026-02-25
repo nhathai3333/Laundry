@@ -407,24 +407,32 @@ function Dashboard() {
           </div>
         </div>
         
-        {/* Revenue by Store - Only show when viewing all stores */}
-        {isAdmin() && selectedStoreId === 'all' && revenueByStore.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-green-300">
-            <h3 className="text-sm font-bold text-green-800 mb-3">Doanh thu theo từng cửa hàng</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {revenueByStore.map((store) => (
-                <div key={store.store_id} className="bg-white rounded-lg p-3 border border-green-200">
-                  <div className="text-xs font-medium text-green-700 mb-1">{store.store_name}</div>
-                  <div className="text-lg font-bold text-green-600">
-                    {new Intl.NumberFormat('vi-VN').format(parseFloat(store.revenue) || 0)} đ
-                  </div>
-                  <div className="text-xs text-green-600 mt-1">{store.orders} đơn</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Revenue by Store removed from here and moved to separate section below */}
       </div>
+
+      {/* Store Revenue - separated section (only when viewing all stores) */}
+      {isAdmin() && selectedStoreId === 'all' && revenueByStore.length > 0 && (
+        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl shadow-lg p-6 border border-indigo-200 mt-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-indigo-800 mb-1">Doanh thu theo từng cửa hàng</h3>
+              <p className="text-sm text-indigo-600">Tổng hợp doanh thu trong ngày</p>
+            </div>
+            <div className="text-2xl">🏬</div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {revenueByStore.map((store) => (
+              <div key={store.store_id} className="bg-white rounded-lg p-3 border border-indigo-200">
+                <div className="text-xs font-medium text-indigo-700 mb-1">{store.store_name}</div>
+                <div className="text-lg font-bold text-indigo-600">
+                  {new Intl.NumberFormat('vi-VN').format(parseFloat(store.revenue) || 0)} đ
+                </div>
+                <div className="text-xs text-indigo-600 mt-1">{store.orders} đơn</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
