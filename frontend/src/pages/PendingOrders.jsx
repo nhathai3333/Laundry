@@ -88,7 +88,7 @@ function PendingOrders() {
       await api.post(`/orders/${order.id}/status`, { status: 'completed' });
       await api.patch(`/orders/${order.id}/debt`);
       loadPendingOrders();
-      alert('Đã chuyển đơn sang Ghi nợ. Vào menu Ghi nợ để thanh toán khi khách trả.');
+
     } catch (error) {
       alert(error.response?.data?.error || 'Thao tác thất bại');
     }

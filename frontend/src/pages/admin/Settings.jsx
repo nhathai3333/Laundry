@@ -14,6 +14,9 @@ function Settings() {
     bill_store_address: '',
     bill_store_phone: '',
     bill_footer_message: 'Cảm ơn quý khách!',
+    bill_qr_image: '',
+    bill_qr_content: '',
+    bill_bottom_padding_mm: '0',
   });
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState('');
@@ -314,11 +317,35 @@ function Settings() {
                 className="w-full px-3 py-2.5 border rounded-lg text-base"
                 required
               >
+                <option value="112mm">112mm (Rộng)</option>
                 <option value="80mm">80mm (Thông thường)</option>
                 <option value="58mm">58mm (Nhỏ)</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
                 Chọn cỡ giấy phù hợp với máy in của bạn
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Độ dài bill (thêm khoảng trống cuối)
+              </label>
+              <select
+                value={String(settings.bill_bottom_padding_mm ?? '0')}
+                onChange={(e) => setSettings({ ...settings, bill_bottom_padding_mm: e.target.value })}
+                className="w-full px-3 py-2.5 border rounded-lg text-base"
+              >
+                <option value="0">0 mm (mặc định)</option>
+                <option value="10">10 mm</option>
+                <option value="20">20 mm</option>
+                <option value="30">30 mm</option>
+                <option value="40">40 mm</option>
+                <option value="50">50 mm</option>
+                <option value="80">80 mm</option>
+                <option value="100">100 mm</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Thêm khoảng trống trắng ở cuối bill để bill dài hơn (cắt giấy sau khi in)
               </p>
             </div>
           </div>
@@ -392,6 +419,73 @@ function Settings() {
                 <p className="text-xs text-gray-500 mt-1">
                   Thông điệp hiển thị ở cuối bill
                 </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nội dung QR chuyển khoản (khuyến nghị)
+                </label>
+                <textarea
+                  value={settings.bill_qr_content || ''}
+                  onChange={(e) => setSettings({ ...settings, bill_qr_content: e.target.value })}
+                  className="w-full px-3 py-2.5 border rounded-lg text-base"
+                  placeholder="Ví dụ: 9704229123456789 hoặc Ngân hàng ABC - STK 1234567890 - Chủ TK Nguyễn Văn A"
+                  rows={3}
+                  maxLength={500}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Nhập số tài khoản, tên ngân hàng, hoặc nội dung chuyển khoản. Hệ thống sẽ <strong>tự tạo mã QR</strong> và in dưới bill. Cách này ổn định, không cần upload ảnh.
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ảnh QR chuyển khoản (dự phòng)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Chỉ dùng nếu không dùng nội dung text ở trên. Ảnh sẽ in ở cuối bill (dưới footer).
+                </p>
+                {settings.bill_qr_image ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <img src={settings.bill_qr_image} alt="QR" className="w-24 h-24 object-contain border rounded bg-white" />
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, bill_qr_image: '' })}
+                      className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                    >
+                      Xóa ảnh
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const dataUrl = reader.result;
+                        if (typeof dataUrl !== 'string') return;
+                        const img = new Image();
+                        img.onload = () => {
+                          const c = document.createElement('canvas');
+                          const s = Math.min(200, img.width, img.height);
+                          c.width = s;
+                          c.height = s;
+                          const ctx = c.getContext('2d');
+                          ctx.drawImage(img, 0, 0, s, s);
+                          const resized = c.toDataURL('image/png', 0.8);
+                          setSettings((prev) => ({ ...prev, bill_qr_image: resized }));
+                        };
+                        img.onerror = () => setSettings((prev) => ({ ...prev, bill_qr_image: dataUrl }));
+                        img.src = dataUrl;
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="w-full text-sm text-gray-600 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:bg-gray-100 file:text-gray-700"
+                  />
+                )}
               </div>
             </div>
 

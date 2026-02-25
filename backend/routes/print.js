@@ -1,11 +1,13 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { query, queryOne } from '../database/db.js';
 import { authenticate } from '../middleware/auth.js';
 import { validateId } from '../utils/validators.js';
-import { createCanvas, registerFont } from 'canvas';
+import { createCanvas, registerFont, loadImage } from 'canvas';
+import QRCode from 'qrcode';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BILL_FONT_FAMILY = 'BillFont';
@@ -86,7 +88,7 @@ router.get('/bill-data/:orderId', async (req, res) => {
     settingsRows.forEach((s) => { settings[s.key] = s.value; });
     const paperSize = settings.paper_size || '80mm';
 
-    const billData = generateBill(order, items, settings, paperSize);
+    const billData = await generateBill(order, items, settings, paperSize);
     res.json({ success: true, data: billData.toString('base64'), paperSize });
   } catch (err) {
     res.status(500).json({ error: 'Lỗi khi tạo bill' });
@@ -128,9 +130,9 @@ function formatDateDDMMYYYY(dateStr) {
   return `${day}/${month}/${year}`;
 }
 
-function generateBill(order, items, settings, paperSize) {
+async function generateBill(order, items, settings, paperSize) {
   const str = (s) => String(s ?? '');
-  const widthPx = paperSize === '80mm' ? 384 : 288;
+  const widthPx = paperSize === '112mm' ? 576 : paperSize === '80mm' ? 384 : 288;
   const fontSize = 22;
   const titleFontSize = 28;
   const lineHeight = Math.max(fontSize + 4, titleFontSize + 4);
@@ -207,7 +209,61 @@ function generateBill(order, items, settings, paperSize) {
     ctx.fillText(priceStr, colQtyEnd, y);
   });
 
-  return canvasToEscPos(canvas);
+  let outputCanvas = canvas;
+  const qrSizePx = Math.min(Math.floor(widthPx * 0.55), 220);
+  const qrPadding = 12;
+
+  let qrBuffer = null;
+  const qrContent = settings.bill_qr_content ? String(settings.bill_qr_content).trim() : '';
+  if (qrContent.length > 0) {
+    try {
+      qrBuffer = await QRCode.toBuffer(qrContent, { type: 'png', width: qrSizePx, margin: 1 });
+    } catch (err) {
+      console.error('Bill QR generate error:', err.message);
+    }
+  }
+  if (!qrBuffer && settings.bill_qr_image) {
+    const qrRaw = String(settings.bill_qr_image).trim();
+    const qrBase64 = qrRaw.replace(/^data:image\/[^;]+;base64,/, '').replace(/\s/g, '');
+    if (qrBase64.length > 0) {
+      try {
+        const buf = Buffer.from(qrBase64, 'base64');
+        if (buf.length > 0) qrBuffer = buf;
+      } catch (_) {}
+    }
+  }
+
+  if (qrBuffer && qrBuffer.length > 0) {
+    try {
+      const img = await loadImage(qrBuffer);
+      const drawSize = Math.min(qrSizePx, img.width, img.height, 220);
+      const totalH = canvas.height + qrPadding + drawSize + 10;
+      outputCanvas = createCanvas(widthPx, totalH);
+      const outCtx = outputCanvas.getContext('2d');
+      outCtx.fillStyle = 'white';
+      outCtx.fillRect(0, 0, widthPx, totalH);
+      outCtx.drawImage(canvas, 0, 0);
+      const qrX = (widthPx - drawSize) / 2;
+      const qrY = canvas.height + qrPadding;
+      outCtx.drawImage(img, qrX, qrY, drawSize, drawSize);
+    } catch (err) {
+      console.error('Bill QR draw error:', err.message);
+    }
+  }
+
+  const extraBottomMm = Math.max(0, parseInt(settings.bill_bottom_padding_mm, 10) || 0);
+  if (extraBottomMm > 0) {
+    const pxPerMm = widthPx / (paperSize === '112mm' ? 112 : paperSize === '80mm' ? 80 : 58);
+    const extraPx = Math.round(extraBottomMm * pxPerMm);
+    const longCanvas = createCanvas(widthPx, outputCanvas.height + extraPx);
+    const longCtx = longCanvas.getContext('2d');
+    longCtx.fillStyle = 'white';
+    longCtx.fillRect(0, 0, widthPx, longCanvas.height);
+    longCtx.drawImage(outputCanvas, 0, 0);
+    outputCanvas = longCanvas;
+  }
+
+  return canvasToEscPos(outputCanvas);
 }
 
 export default router;

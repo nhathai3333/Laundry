@@ -223,7 +223,6 @@ function Home() {
       loadOrders();
       loadStats();
       if (viewTab === 'debt') loadDebtOrders();
-      alert('Đã chuyển đơn sang Ghi nợ. Vào menu Ghi nợ để thanh toán khi khách trả.');
     } catch (error) {
       alert(error.response?.data?.error || 'Thao tác thất bại');
     }
@@ -833,20 +832,20 @@ function Home() {
                 <div className="flex flex-row flex-nowrap gap-1.5 sm:gap-2 mt-2 pt-2 border-t border-gray-100 justify-end overflow-x-auto">
                   <button
                     onClick={() => handleOpenEditOrder(order)}
-                    className="flex-shrink-0 min-w-0 py-1.5 px-2 bg-blue-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-600 active:bg-blue-700 whitespace-nowrap touch-manipulation"
+                    className="flex-1 min-w-0 py-1.5 px-2 bg-blue-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-600 active:bg-blue-700 whitespace-nowrap touch-manipulation"
                     title="Sửa đơn"
                   >
                     Sửa
                   </button>
                   <button
                     onClick={() => handleCompleteClick(order)}
-                    className="flex-shrink-0 min-w-0 py-1.5 px-2 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
+                    className="flex-1 min-w-0 py-1.5 px-2 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
                   >
                     ✓ Hoàn thành
                   </button>
                   <button
                     onClick={() => handleMarkDebt(order)}
-                    className="flex-shrink-0 min-w-0 py-1.5 px-2 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
+                    className="flex-1 min-w-0 py-1.5 px-2 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
                   >
                     Ghi nợ
                   </button>
@@ -864,7 +863,7 @@ function Home() {
                       }
                     }}
                     disabled={printing}
-                    className="flex-shrink-0 min-w-0 py-1.5 px-2 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
+                    className="flex-1 min-w-0 py-1.5 px-2 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
                   >
                     {printing ? '...' : '🖨️ In bill'}
                   </button>

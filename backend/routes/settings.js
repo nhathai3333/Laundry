@@ -53,6 +53,7 @@ router.get('/', async (req, res) => {
       settingsObj.bill_store_address = '';
       settingsObj.bill_store_phone = '';
       settingsObj.bill_footer_message = 'Cảm ơn quý khách!';
+      settingsObj.bill_bottom_padding_mm = '0';
     } else {
       // Set defaults if not present
       if (!settingsObj.print_method) {
@@ -73,7 +74,7 @@ router.get('/', async (req, res) => {
 // Update settings (Admin or Employer)
 router.put('/', async (req, res) => {
   try {
-    const { printer_ip, printer_port, paper_size, print_method, bill_store_name, bill_store_address, bill_store_phone, bill_footer_message, store_id } = req.body;
+    const { printer_ip, printer_port, paper_size, print_method, bill_store_name, bill_store_address, bill_store_phone, bill_footer_message, bill_qr_image, bill_qr_content, bill_bottom_padding_mm, store_id } = req.body;
     
     // Validate inputs
     if (printer_ip !== undefined) {
@@ -91,7 +92,7 @@ router.put('/', async (req, res) => {
     }
 
     if (paper_size !== undefined) {
-      const paperSizeValidation = validateEnum(paper_size, ['80mm', '58mm'], 'Kích thước giấy');
+      const paperSizeValidation = validateEnum(paper_size, ['58mm', '80mm', '112mm'], 'Kích thước giấy');
       if (!paperSizeValidation.valid) {
         return res.status(400).json({ error: paperSizeValidation.error });
       }
@@ -151,7 +152,7 @@ router.put('/', async (req, res) => {
         `, ['printer_port', String(portValue), targetStoreId]);
       }
       if (paper_size !== undefined) {
-        const paperSizeValidation = validateEnum(paper_size, ['80mm', '58mm'], 'Kích thước giấy');
+        const paperSizeValidation = validateEnum(paper_size, ['58mm', '80mm', '112mm'], 'Kích thước giấy');
         const paperSizeValue = paperSizeValidation.valid ? paperSizeValidation.value : '80mm';
         await db.execute(`
           INSERT INTO settings (\`key\`, value, store_id)
@@ -199,6 +200,31 @@ router.put('/', async (req, res) => {
           VALUES (?, ?, ?)
           ON DUPLICATE KEY UPDATE value = VALUES(value)
         `, ['bill_footer_message', footerSanitized.value, targetStoreId]);
+      }
+      if (bill_qr_image !== undefined) {
+        const qrVal = typeof bill_qr_image === 'string' && bill_qr_image.length <= 60000 ? bill_qr_image : '';
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_qr_image', qrVal, targetStoreId]);
+      }
+      if (bill_qr_content !== undefined) {
+        const contentVal = typeof bill_qr_content === 'string' ? String(bill_qr_content).trim().slice(0, 500) : '';
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_qr_content', contentVal, targetStoreId]);
+      }
+      if (bill_bottom_padding_mm !== undefined) {
+        const v = parseInt(bill_bottom_padding_mm, 10);
+        const val = (isNaN(v) || v < 0) ? 0 : Math.min(100, v);
+        await db.execute(`
+          INSERT INTO settings (\`key\`, value, store_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE value = VALUES(value)
+        `, ['bill_bottom_padding_mm', String(val), targetStoreId]);
       }
     });
 
