@@ -113,13 +113,13 @@ const printViaBluetooth = async (escPosDataBase64) => {
     return new Error(`Lỗi kết nối Bluetooth: ${error.message || 'Lỗi không xác định'}`);
   };
 
-  // Thử dùng máy in đã chọn lần trước
+  // Ưu tiên dùng máy in đã chọn lần trước — không bao giờ xóa cache (kể cả khi kết nối lỗi)
   if (cachedBluetoothDevice) {
     try {
       await connectAndSend(cachedBluetoothDevice, escPosDataBase64);
       return true;
     } catch (_) {
-      cachedBluetoothDevice = null;
+      // Không xóa cachedBluetoothDevice; rơi xuống để hiện danh sách chọn máy (thử lại hoặc chọn máy khác)
     }
   }
 
@@ -166,7 +166,7 @@ export const printBill = async (orderId) => {
     if (printMethod === 'bluetooth') {
       // Must use Bluetooth
       if (!isBluetoothSupported()) {
-        throw new Error('Web Bluetooth không được hỗ trợ trên thiết bị này. Vui lòng liên hệ admin để đổi phương thức in.');
+        throw new Error('Web Bluetooth không được hỗ trợ trên thiết bị này (thường chỉ có trên Android Chrome). Vui lòng liên hệ admin chuyển sang "In qua máy chủ" trong Cài đặt, hoặc mở ứng dụng trên điện thoại Android Chrome để in Bluetooth.');
       }
       
       // Get bill data from server
@@ -190,4 +190,12 @@ export const printBill = async (orderId) => {
     }
     throw error;
   }
+};
+
+/**
+ * Xóa máy in Bluetooth đã lưu. Lần in tiếp theo sẽ yêu cầu chọn lại máy in.
+ * Gọi từ Cài đặt khi cần đổi sang máy in khác.
+ */
+export const resetBluetoothPrinter = () => {
+  cachedBluetoothDevice = null;
 };

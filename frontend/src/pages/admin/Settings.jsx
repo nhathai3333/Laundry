@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../utils/api';
 import { isAdmin, isEmployer, getAuth } from '../../utils/auth';
 import PasswordRequirements from '../../components/PasswordRequirements';
+import { resetBluetoothPrinter } from '../../utils/printBill';
 
 function Settings() {
   const [settings, setSettings] = useState({
@@ -202,6 +203,8 @@ function Settings() {
             className={`mb-4 p-3 rounded-lg ${
               message.includes('thành công')
                 ? 'bg-green-100 text-green-700'
+                : message.includes('reset')
+                ? 'bg-blue-100 text-blue-700'
                 : 'bg-red-100 text-red-700'
             }`}
           >
@@ -415,15 +418,31 @@ function Settings() {
           </div>
         )}
         {settings.print_method === 'bluetooth' && (
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <h3 className="font-medium text-blue-900 mb-2">Hướng dẫn (Phương thức Bluetooth):</h3>
-            <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>Đảm bảo máy in hỗ trợ Bluetooth và đã được bật</li>
-              <li>Chỉ hoạt động trên trình duyệt Chrome trên Android</li>
-              <li>Khi in, trình duyệt sẽ yêu cầu chọn thiết bị Bluetooth</li>
-              <li>Chọn máy in Bluetooth của bạn từ danh sách</li>
-              <li>Sau khi cấu hình, thử in bill từ một đơn hàng để kiểm tra</li>
-            </ul>
+          <div className="mt-6 space-y-4">
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <h3 className="font-medium text-blue-900 mb-2">Hướng dẫn (Phương thức Bluetooth):</h3>
+              <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                <li>Đảm bảo máy in hỗ trợ Bluetooth và đã được bật</li>
+                <li>Chỉ hoạt động trên trình duyệt Chrome trên Android</li>
+                <li>Khi in, trình duyệt sẽ yêu cầu chọn thiết bị Bluetooth</li>
+                <li>Chọn máy in Bluetooth của bạn từ danh sách</li>
+                <li>Sau khi cấu hình, thử in bill từ một đơn hàng để kiểm tra</li>
+              </ul>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  resetBluetoothPrinter();
+                  setMessage('Đã reset máy in. Lần in tiếp theo sẽ yêu cầu chọn lại máy in.');
+                  setTimeout(() => setMessage(''), 4000);
+                }}
+                className="px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 font-medium text-sm"
+              >
+                Reset máy in
+              </button>
+              <p className="text-xs text-gray-500 mt-1">Dùng khi muốn đổi sang máy in Bluetooth khác. Lần in bill tiếp theo sẽ hiện danh sách chọn máy.</p>
+            </div>
           </div>
         )}
       </div>
