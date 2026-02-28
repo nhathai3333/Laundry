@@ -45,3 +45,9 @@ export const getEmployeeId = () => {
   const { user } = getAuth();
   return user?.employee_id || null;
 };
+
+/** Màn hình nhỏ (điện thoại): admin chỉ được dùng máy tính */
+export const isMobileScreen = () => {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth < 768;
+};

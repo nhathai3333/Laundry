@@ -685,9 +685,9 @@ router.post('/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Status is required' });
     }
 
-    const validStatuses = ['created', 'completed'];
+    const validStatuses = ['created', 'washing', 'drying', 'waiting_pickup', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status. Only "created" and "completed" are allowed.' });
+      return res.status(400).json({ error: 'Invalid status. Allowed: created, washing, drying, waiting_pickup, completed, cancelled.' });
     }
 
     const order = await queryOne('SELECT * FROM orders WHERE id = ?', [req.params.id]);

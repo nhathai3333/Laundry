@@ -240,9 +240,19 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Only root can update admin users
+    const isSelf = parseInt(req.params.id, 10) === req.user.id;
+    // Chỉ root mới được cập nhật admin khác; admin thường được đổi mật khẩu của chính mình
     if (oldUser.role === 'admin' && req.user.role !== 'root') {
-      return res.status(403).json({ error: 'Chỉ root admin mới có thể cập nhật thông tin admin' });
+      if (!isSelf) {
+        return res.status(403).json({ error: 'Chỉ root admin mới có thể cập nhật thông tin admin' });
+      }
+      // Admin thường tự đổi mật khẩu: chỉ cho phép gửi password
+      if (!password) {
+        return res.status(400).json({ error: 'Chỉ có thể đổi mật khẩu. Gửi field password.' });
+      }
+      const password_hash = await hashPassword(password);
+      await execute('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, req.params.id]);
+      return res.json({ message: 'Đổi mật khẩu thành công' });
     }
 
     // Check if phone exists (if changed)

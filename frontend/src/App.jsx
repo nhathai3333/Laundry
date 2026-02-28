@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { isAuthenticated, isAdmin, isRoot } from './utils/auth';
+import { isAuthenticated, isAdmin, isRoot, isMobileScreen } from './utils/auth';
 import Login from './pages/Login';
+import DesktopOnlyScreen from './components/DesktopOnlyScreen';
 import AdminLayout from './layouts/AdminLayout';
 import EmployerLayout from './layouts/EmployerLayout';
 import Dashboard from './pages/Dashboard';
@@ -62,9 +64,35 @@ const AdminOnlyRoute = ({ children }) => {
   return children;
 };
 
+// Chỉ nhân viên (employer) mới vào được layout trang chủ/tạo đơn - admin không thấy trang tạo đơn
+const EmployerOnlyRoute = ({ children }) => {
+  if (!isAuthenticated()) {
+    return <Navigate to="/login" />;
+  }
+  if (isAdmin()) {
+    return <Navigate to="/admin" replace />;
+  }
+  return children;
+};
+
+// Admin thường trên điện thoại: hiển thị "Chỉ hỗ trợ máy tính". Root được dùng điện thoại.
+function AdminDesktopOnlyGuard({ children }) {
+  const [mobile, setMobile] = useState(() => isMobileScreen());
+  useEffect(() => {
+    const check = () => setMobile(isMobileScreen());
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  if (isAuthenticated() && isAdmin() && !isRoot() && mobile) {
+    return <DesktopOnlyScreen />;
+  }
+  return children;
+}
+
 function App() {
   return (
     <Router>
+      <AdminDesktopOnlyGuard>
       <Routes>
         <Route path="/login" element={<Login />} />
         
@@ -87,13 +115,16 @@ function App() {
           <Route path="settings" element={<AdminOnlyRoute><Settings /></AdminOnlyRoute>} />
           <Route path="stores" element={<AdminOnlyRoute><Stores /></AdminOnlyRoute>} />
           <Route path="promotions" element={<AdminOnlyRoute><Promotions /></AdminOnlyRoute>} />
+          <Route path="orders" element={<AdminOnlyRoute><Orders /></AdminOnlyRoute>} />
         </Route>
 
         <Route
           path="/*"
           element={
             <PrivateRoute>
-              <EmployerLayout />
+              <EmployerOnlyRoute>
+                <EmployerLayout />
+              </EmployerOnlyRoute>
             </PrivateRoute>
           }
         >
@@ -104,6 +135,7 @@ function App() {
           <Route path="employees" element={<Employees />} />
         </Route>
       </Routes>
+      </AdminDesktopOnlyGuard>
     </Router>
   );
 }

@@ -196,7 +196,6 @@ function Stores() {
         alert('Cập nhật nhân viên thành công!');
       } else {
         await api.post('/employees', submitData);
-        alert('Thêm nhân viên thành công!');
       }
       setShowEmployeeModal(false);
       setEditingEmployee(null);

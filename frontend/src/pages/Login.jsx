@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { setAuth, isAdmin, isRoot } from '../utils/auth';
+import { setAuth, isAdmin, isRoot, isMobileScreen } from '../utils/auth';
 
 function Login() {
   const [phone, setPhone] = useState('');
@@ -23,8 +23,14 @@ function Login() {
     try {
       const response = await api.post('/auth/login', { phone, password });
       
-      // Check if store selection is required (for admin)
+      // Check if store selection is required (for admin) - chặn admin thường đăng nhập từ điện thoại (root được dùng điện thoại)
       if (response.data.requiresStoreSelection) {
+        const user = response.data.user;
+        if (user && user.role === 'admin' && isMobileScreen()) {
+          setError('Tài khoản admin chỉ được đăng nhập từ máy tính. Vui lòng truy cập từ máy tính hoặc tablet màn hình lớn.');
+          setLoading(false);
+          return;
+        }
         setStores(response.data.stores || []);
         setTempUser(response.data.user);
         setIsStoreSelection(true);
@@ -48,6 +54,13 @@ function Login() {
       const { token, user } = response.data;
       if (!token || !user) {
         setError('Đăng nhập thất bại: Thiếu thông tin token hoặc user');
+        return;
+      }
+
+      // Admin thường chỉ được đăng nhập từ máy tính (root có thể dùng điện thoại)
+      if (user.role === 'admin' && isMobileScreen()) {
+        setError('Tài khoản admin chỉ được đăng nhập từ máy tính. Vui lòng truy cập từ máy tính hoặc tablet màn hình lớn.');
+        setLoading(false);
         return;
       }
       
@@ -98,24 +111,22 @@ function Login() {
         setError('Đăng nhập thất bại: Thiếu thông tin token hoặc user');
         return;
       }
+
+      // Admin thường chỉ được đăng nhập từ máy tính (root có thể dùng điện thoại)
+      if (user.role === 'admin' && isMobileScreen()) {
+        setError('Tài khoản admin chỉ được đăng nhập từ máy tính. Vui lòng truy cập từ máy tính hoặc tablet màn hình lớn.');
+        setLoading(false);
+        return;
+      }
       
       setAuth(token, user);
 
-      // Debug: Log user info để kiểm tra role
-      console.log('Store selection successful - User:', user);
-      console.log('User role:', user?.role);
-      console.log('isRoot():', isRoot());
-      console.log('isAdmin():', isAdmin());
-
       // Root admin chỉ có thể truy cập Dashboard và Admin Management
       if (isRoot()) {
-        console.log('Redirecting root admin to /admin');
         navigate('/admin');
       } else if (isAdmin()) {
-        console.log('Redirecting admin to /admin');
         navigate('/admin');
       } else {
-        console.log('Redirecting employer to /');
         navigate('/');
       }
     } catch (err) {

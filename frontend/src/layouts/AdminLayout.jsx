@@ -20,6 +20,7 @@ function AdminLayout() {
       ]
     : [
         { path: '/admin', label: 'Dashboard', icon: '📊' },
+        { path: '/admin/orders', label: 'Quản lý đơn', icon: '📋' },
         { path: '/admin/stores', label: 'Cửa hàng & Nhân sự', icon: '🏪' },
         { path: '/admin/products', label: 'Sản phẩm', icon: '📦' },
         { path: '/admin/promotions', label: 'Khuyến mãi', icon: '🎁' },

@@ -249,7 +249,6 @@ function Home() {
       await api.patch(`/orders/${order.id}/debt/paid`);
       loadDebtOrders();
       loadStats();
-      alert('Đã ghi nhận thanh toán.');
     } catch (error) {
       alert(error.response?.data?.error || 'Thao tác thất bại');
     }
@@ -272,7 +271,6 @@ function Home() {
       setCheckInNote('');
       await checkTodayStatus();
       setShowModal(true);
-      alert('Đã check-in. Bạn có thể tạo đơn hàng.');
     } catch (error) {
       alert(error.response?.data?.error || 'Check-in thất bại');
     } finally {
@@ -642,12 +640,20 @@ function Home() {
 
   const statusColors = {
     created: 'bg-gray-100 text-gray-800',
+    washing: 'bg-blue-100 text-blue-800',
+    drying: 'bg-purple-100 text-purple-800',
+    waiting_pickup: 'bg-orange-100 text-orange-800',
     completed: 'bg-green-100 text-green-800',
+    cancelled: 'bg-red-100 text-red-800',
   };
 
   const statusLabels = {
     created: 'Đã tạo',
+    washing: 'Đang giặt',
+    drying: 'Đang sấy',
+    waiting_pickup: 'Chờ lấy',
     completed: 'Hoàn thành',
+    cancelled: 'Đã hủy',
   };
 
   if (loading && orders.length === 0) {
@@ -782,9 +788,39 @@ function Home() {
             if (a.status === 'completed' && b.status === 'created') return 1;
             return new Date(b.created_at) - new Date(a.created_at);
           }).map((order) => (
-            <div key={order.id} className="bg-white rounded-lg shadow-sm border border-gray-100 p-2 sm:p-2.5 hover:shadow-md transition-shadow">
+            <div key={order.id} className="relative bg-white rounded-lg shadow-sm border border-gray-100 p-2 sm:p-2.5 hover:shadow-md transition-shadow">
+              {order.status !== 'completed' && order.status !== 'cancelled' && (
+                <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                  {order.status === 'created' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditOrder(order)}
+                      className="w-7 h-7 flex items-center justify-center rounded bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 transition-colors touch-manipulation"
+                      title="Sửa đơn"
+                      aria-label="Sửa đơn"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Hủy đơn hàng ${order.code}?`)) {
+                        handleStatusChange(order.id, 'cancelled');
+                      }
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded bg-red-500 text-white hover:bg-red-600 active:bg-red-700 transition-colors touch-manipulation text-lg leading-none"
+                    title="Hủy đơn"
+                    aria-label="Hủy đơn"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0">
+                <div className={`flex-1 min-w-0 ${order.status !== 'completed' && order.status !== 'cancelled' ? 'pr-14' : 'pr-0'}`}>
                   <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                     <span className="font-semibold text-xs sm:text-sm text-gray-800 truncate">{order.code}</span>
                     <span
@@ -816,7 +852,7 @@ function Home() {
                     </div>
                   )}
                 </div>
-                <div className="text-right flex-shrink-0">
+                <div className={`text-right flex-shrink-0 ${order.status !== 'completed' && order.status !== 'cancelled' ? 'mt-6' : ''}`}>
                   <div className="text-sm sm:text-base font-bold text-gray-800 leading-tight">
                     {new Intl.NumberFormat('vi-VN').format(parseFloat(order.final_amount) || parseFloat(order.total_amount) || 0)} đ
                   </div>
@@ -827,46 +863,43 @@ function Home() {
                   )}
                 </div>
               </div>
-              {/* Nút thao tác: hàng ngang bên dưới, căn phải, kích thước bằng nhau */}
-              {order.status === 'created' && (
+              {/* Nút thao tác: khi đơn chưa hoàn thành và chưa hủy */}
+              {order.status !== 'completed' && order.status !== 'cancelled' && (
                 <div className="flex flex-row flex-nowrap gap-1.5 sm:gap-2 mt-2 pt-2 border-t border-gray-100 justify-end overflow-x-auto">
-                  <button
-                    onClick={() => handleOpenEditOrder(order)}
-                    className="flex-1 min-w-0 py-1.5 px-2 bg-blue-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-600 active:bg-blue-700 whitespace-nowrap touch-manipulation"
-                    title="Sửa đơn"
-                  >
-                    Sửa
-                  </button>
-                  <button
-                    onClick={() => handleCompleteClick(order)}
-                    className="flex-1 min-w-0 py-1.5 px-2 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
-                  >
-                    ✓ Hoàn thành
-                  </button>
-                  <button
-                    onClick={() => handleMarkDebt(order)}
-                    className="flex-1 min-w-0 py-1.5 px-2 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
-                  >
-                    Ghi nợ
-                  </button>
-                  <button
-                    onClick={async () => {
-                      setPrinting(true);
-                      try {
-                        const result = await printBill(order.id);
-                        alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
-                      } catch (printError) {
-                        console.error('Print error:', printError);
-                        alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
-                      } finally {
-                        setPrinting(false);
-                      }
-                    }}
-                    disabled={printing}
-                    className="flex-1 min-w-0 py-1.5 px-2 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
-                  >
-                    {printing ? '...' : '🖨️ In bill'}
-                  </button>
+                  {order.status === 'created' && (
+                    <>
+                      <button
+                        onClick={() => handleCompleteClick(order)}
+                        className="flex-1 min-w-0 py-1.5 px-2 bg-green-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-green-700 active:bg-green-800 whitespace-nowrap touch-manipulation"
+                      >
+                        ✓ Hoàn thành
+                      </button>
+                      <button
+                        onClick={() => handleMarkDebt(order)}
+                        className="flex-1 min-w-0 py-1.5 px-2 bg-amber-500 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-amber-600 active:bg-amber-700 whitespace-nowrap touch-manipulation"
+                      >
+                        Ghi nợ
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setPrinting(true);
+                          try {
+                            const result = await printBill(order.id);
+                            alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
+                          } catch (printError) {
+                            console.error('Print error:', printError);
+                            alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                          } finally {
+                            setPrinting(false);
+                          }
+                        }}
+                        disabled={printing}
+                        className="flex-1 min-w-0 py-1.5 px-2 bg-blue-600 text-white rounded text-[10px] sm:text-xs font-medium hover:bg-blue-700 disabled:opacity-50 active:bg-blue-800 whitespace-nowrap touch-manipulation"
+                      >
+                        {printing ? '...' : '🖨️ In bill'}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -894,16 +927,17 @@ function Home() {
           <div className="p-6 text-center text-gray-500 text-sm">Đang tải...</div>
         ) : (() => {
           const q = (debtSearchQuery || '').trim().toLowerCase();
+          const notCancelled = debtOrders.filter((o) => o.status !== 'cancelled');
           const filtered = q
-            ? debtOrders.filter((o) => {
+            ? notCancelled.filter((o) => {
                 const name = (o.customer_name || o.customer_phone || '').toString().toLowerCase();
                 return name.includes(q);
               })
-            : debtOrders;
+            : notCancelled;
           if (filtered.length === 0) {
             return (
               <div className="p-6 text-center text-gray-500 text-sm">
-                {debtOrders.length === 0 ? 'Chưa có đơn ghi nợ' : 'Không tìm thấy đơn nào theo tên khách hàng'}
+                {notCancelled.length === 0 ? 'Chưa có đơn ghi nợ' : 'Không tìm thấy đơn nào theo tên khách hàng'}
               </div>
             );
           }
@@ -938,12 +972,12 @@ function Home() {
                     ))}
                   </div>
                 )}
-                <div className="flex gap-2 mt-3 pt-3 border-t">
+                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
                   <button
                     onClick={() => handleMarkDebtPaid(order)}
-                    className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+                    className="flex-1 min-w-0 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
                   >
-                    Đã thanh toán
+                    Đã Thanh Toán
                   </button>
                   <button
                     onClick={async () => {
@@ -962,6 +996,16 @@ function Home() {
                     className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
                   >
                     {printing ? '...' : 'In bill'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Hủy đơn hàng ${order.code}? Đơn ghi nợ sẽ bị hủy.`)) {
+                        handleStatusChange(order.id, 'cancelled').then(() => loadDebtOrders());
+                      }
+                    }}
+                    className="px-3 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600"
+                  >
+                    Hủy đơn
                   </button>
                 </div>
               </div>
