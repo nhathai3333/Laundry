@@ -396,6 +396,7 @@ function AdminManagement() {
                   ) : (
                     allAdmins.map((admin) => {
                       const packageNames = {
+                        '1month': '1 tháng',
                         '3months': '3 tháng',
                         '6months': '6 tháng',
                         '1year': '1 năm',
@@ -523,6 +524,23 @@ function AdminManagement() {
                 <div className="flex-1">
                   <div className="font-semibold text-gray-800">Dùng thử 7 ngày</div>
                   <div className="text-sm text-gray-600">Hết hạn sau 7 ngày kể từ ngày kích hoạt</div>
+                </div>
+              </label>
+
+              <label className={`flex items-center p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                selectedPackage === '1month' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="package"
+                  value="1month"
+                  checked={selectedPackage === '1month'}
+                  onChange={(e) => setSelectedPackage(e.target.value)}
+                  className="mr-3"
+                />
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-800">Gói 1 tháng</div>
+                  <div className="text-sm text-gray-600">Hết hạn sau 1 tháng kể từ ngày kích hoạt</div>
                 </div>
               </label>
 
@@ -743,6 +761,9 @@ function AdminManagement() {
                       const now = new Date();
                       let expirationDate = new Date();
                       switch (packageType) {
+                        case '1month':
+                          expirationDate.setMonth(now.getMonth() + 1);
+                          break;
                         case '3months':
                           expirationDate.setMonth(now.getMonth() + 3);
                           break;
@@ -767,6 +788,7 @@ function AdminManagement() {
                 >
                   <option value="">-- Không có gói --</option>
                   <option value="7days">Dùng thử 7 ngày</option>
+                  <option value="1month">1 tháng</option>
                   <option value="3months">3 tháng</option>
                   <option value="6months">6 tháng</option>
                   <option value="1year">1 năm</option>

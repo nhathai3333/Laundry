@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { query, queryOne, execute } from '../database/db.js';
-import { comparePassword } from '../utils/helpers.js';
+import { comparePassword, hashPassword } from '../utils/helpers.js';
 import { authenticate } from '../middleware/auth.js';
 import { loginRateLimiter, resetLoginRateLimit } from '../middleware/rateLimiter.js';
 import { MAX_LOGIN_ATTEMPTS, ACCOUNT_LOCKOUT_MINUTES, TIMING_ATTACK_DELAY_MS } from '../utils/constants.js';
@@ -373,6 +373,42 @@ router.post('/login', loginRateLimiter(), async (req, res) => {
     res.status(500).json({ 
       error: 'Lỗi máy chủ khi đăng nhập. Vui lòng thử lại.' 
     });
+  }
+});
+
+// Đăng ký sử dụng dịch vụ (tạo admin thường, status = pending, chờ root phê duyệt)
+router.post('/register', async (req, res) => {
+  try {
+    const { name, phone, password, subscription_package } = req.body;
+
+    if (!name || !phone || !password || !subscription_package) {
+      return res.status(400).json({ error: 'Vui lòng điền đầy đủ: Họ tên, Số điện thoại, Mật khẩu và chọn gói dịch vụ.' });
+    }
+
+    const validPackages = ['1month', '3months', '6months', '1year'];
+    if (!validPackages.includes(subscription_package)) {
+      return res.status(400).json({ error: 'Gói dịch vụ không hợp lệ. Chọn: 1 tháng, 3 tháng, 6 tháng hoặc 12 tháng.' });
+    }
+
+    const trimmedPhone = String(phone).trim();
+    const existing = await queryOne('SELECT id FROM users WHERE phone = ?', [trimmedPhone]);
+    if (existing) {
+      return res.status(400).json({ error: 'Số điện thoại đã được đăng ký. Vui lòng dùng số khác hoặc đăng nhập.' });
+    }
+
+    const password_hash = await hashPassword(password);
+    await execute(
+      `INSERT INTO users (name, phone, password_hash, role, status, subscription_package)
+       VALUES (?, ?, ?, 'admin', 'pending', ?)`,
+      [name.trim(), trimmedPhone, password_hash, subscription_package]
+    );
+
+    res.status(201).json({
+      message: 'Đăng ký thành công. Tài khoản đang chờ phê duyệt. Quý khách vui lòng chuyển khoản theo hướng dẫn và gửi ảnh chuyển khoản qua Zalo để được kích hoạt trong 24h.',
+    });
+  } catch (error) {
+    console.error('Register error:', error);
+    res.status(500).json({ error: 'Lỗi đăng ký. Vui lòng thử lại.' });
   }
 });
 

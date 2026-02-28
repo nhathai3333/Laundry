@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { isAuthenticated, isAdmin, isRoot, isMobileScreen } from './utils/auth';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import DesktopOnlyScreen from './components/DesktopOnlyScreen';
 import AdminLayout from './layouts/AdminLayout';
 import EmployerLayout from './layouts/EmployerLayout';
@@ -95,6 +96,7 @@ function App() {
       <AdminDesktopOnlyGuard>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         
         <Route
           path="/admin/*"

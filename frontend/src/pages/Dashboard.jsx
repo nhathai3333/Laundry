@@ -241,6 +241,7 @@ function Dashboard() {
     const { overview, subscriptionPackages } = rootStats;
     
     const packageLabels = {
+      '1month': '1 tháng',
       '3months': '3 tháng',
       '6months': '6 tháng',
       '1year': '1 năm',

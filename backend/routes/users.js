@@ -347,6 +347,9 @@ router.patch('/:id', authorize('admin'), auditLog('update', 'user'), async (req,
         let expirationDate = new Date();
         
         switch (subscription_package) {
+          case '1month':
+            expirationDate.setMonth(now.getMonth() + 1);
+            break;
           case '3months':
             expirationDate.setMonth(now.getMonth() + 3);
             break;
@@ -476,9 +479,9 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
     }
 
     // Validate package type
-    const validPackages = ['3months', '6months', '1year', '7days'];
+    const validPackages = ['1month', '3months', '6months', '1year', '7days'];
     if (!packageType || !validPackages.includes(packageType)) {
-      return res.status(400).json({ error: 'Vui lòng chọn gói: 3months, 6months, 1year, hoặc 7days' });
+      return res.status(400).json({ error: 'Vui lòng chọn gói: 1 tháng, 3 tháng, 6 tháng, 1 năm hoặc 7 ngày dùng thử' });
     }
 
     // Calculate expiration date based on package
@@ -486,6 +489,9 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
     let expirationDate = new Date();
     
     switch (packageType) {
+      case '1month':
+        expirationDate.setMonth(now.getMonth() + 1);
+        break;
       case '3months':
         expirationDate.setMonth(now.getMonth() + 3);
         break;
@@ -533,6 +539,7 @@ router.post('/:id/approve', authorize('admin'), auditLog('approve', 'user'), asy
     `, [req.params.id]);
 
     const packageNames = {
+      '1month': '1 tháng',
       '3months': '3 tháng',
       '6months': '6 tháng',
       '1year': '1 năm',

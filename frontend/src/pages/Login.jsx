@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '../utils/api';
 import { setAuth, isAdmin, isRoot, isMobileScreen } from '../utils/auth';
 
@@ -181,6 +181,13 @@ function Login() {
             >
               {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </button>
+
+            <p className="text-center text-sm text-gray-600 mt-4">
+              Chưa có tài khoản?{' '}
+              <Link to="/register" className="text-blue-600 font-medium hover:underline">
+                Đăng ký sử dụng dịch vụ
+              </Link>
+            </p>
           </form>
 
         </div>
