@@ -458,8 +458,12 @@ router.delete('/:id', authorize('admin'), auditLog('delete', 'promotion'), async
       }
     }
 
-    await execute('DELETE FROM promotions WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Promotion deleted successfully' });
+    // Quy ước: "Xóa" = chỉ đổi sang inactive, không DELETE để giữ lịch sử đơn hàng và báo cáo
+    await execute('UPDATE promotions SET status = ? WHERE id = ?', ['inactive', req.params.id]);
+    return res.json({
+      message: 'Đã ngừng áp dụng khuyến mãi. Khuyến mãi được ẩn khỏi danh sách chọn khi tạo đơn.',
+      action: 'deactivated'
+    });
   } catch (error) {
     console.error('Delete promotion error:', error);
     res.status(500).json({ error: 'Server error' });

@@ -168,13 +168,16 @@ function Promotions() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Bạn có chắc muốn xóa khuyến mãi này?')) return;
+    if (!confirm('Bạn có chắc muốn ngừng áp dụng khuyến mãi này? Khuyến mãi sẽ được ẩn khỏi danh sách chọn khi tạo đơn.')) return;
     try {
-      await api.delete(`/promotions/${id}`);
-      alert('Xóa khuyến mãi thành công!');
+      const res = await api.delete(`/promotions/${id}`);
+      const msg = res.data?.action === 'deactivated'
+        ? 'Đã ẩn/ngừng khuyến mãi.'
+        : (res.data?.message || 'Đã xử lý xong.');
+      alert(msg);
       loadPromotions();
     } catch (error) {
-      alert(error.response?.data?.error || 'Xóa thất bại');
+      alert(error.response?.data?.error || 'Xử lý thất bại');
     }
   };
 

@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
           FROM stores s
           LEFT JOIN users u_shared ON s.shared_account_id = u_shared.id
           LEFT JOIN users u_own ON s.id = u_own.store_id AND u_own.role = 'employer'
-          WHERE s.admin_id = ?
+          WHERE s.admin_id = ? AND s.status = 'active'
           ORDER BY s.name
         `, [req.user.id]);
       } catch (error) {
@@ -49,7 +49,7 @@ router.get('/', async (req, res) => {
                      u_own.phone as own_account_phone
               FROM stores s
               LEFT JOIN users u_own ON s.id = u_own.store_id AND u_own.role = 'employer'
-              WHERE s.admin_id = ?
+              WHERE s.admin_id = ? AND s.status = 'active'
               ORDER BY s.name
             `, [req.user.id]);
           } catch (error2) {
@@ -63,6 +63,7 @@ router.get('/', async (req, res) => {
                        u_own.phone as own_account_phone
                 FROM stores s
                 LEFT JOIN users u_own ON s.id = u_own.store_id AND u_own.role = 'employer'
+                WHERE s.status = 'active'
                 ORDER BY s.name
               `);
             } else {
@@ -381,35 +382,9 @@ router.delete('/:id', authorize('admin'), async (req, res) => {
       }
     }
 
-    // Delete related records first to avoid foreign key constraints
-    try {
-      await execute('DELETE FROM products WHERE store_id = ?', [req.params.id]);
-    } catch (error) {
-      // Warning log removed for security
-    }
-
-    try {
-      await execute('DELETE FROM promotions WHERE store_id = ?', [req.params.id]);
-    } catch (error) {
-      // Warning log removed for security
-    }
-
-    try {
-      await execute('DELETE FROM employees WHERE store_id IN (SELECT id FROM users WHERE store_id = ?)', [req.params.id]);
-    } catch (error) {
-      // Log removed for security
-    }
-
-    // Delete the store's own account (if exists, not shared account)
-    try {
-      await execute('DELETE FROM users WHERE store_id = ? AND role = ?', [req.params.id, 'employer']);
-    } catch (error) {
-      // Warning log removed for security
-    }
-
-    // Delete store
-    await execute('DELETE FROM stores WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Store deleted successfully' });
+    // Soft delete: set status inactive (preserves orders, products, history)
+    await execute('UPDATE stores SET status = ? WHERE id = ?', ['inactive', req.params.id]);
+    res.json({ message: 'Đã ngừng hoạt động cửa hàng', action: 'deactivated' });
   } catch (error) {
     console.error('Delete store error:', error);
     res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại.' });

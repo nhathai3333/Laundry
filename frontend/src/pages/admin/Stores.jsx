@@ -342,22 +342,6 @@ function Stores() {
     }
   };
 
-  const handleDeleteStore = async (store) => {
-    if (!confirm(`Bạn có chắc muốn XÓA cửa hàng "${store.name}"?\n\nCảnh báo: Hành động này sẽ xóa vĩnh viễn cửa hàng và tất cả dữ liệu liên quan (sản phẩm, khuyến mãi, nhân viên, v.v.). Hành động này không thể hoàn tác!`)) {
-      return;
-    }
-
-    try {
-      await api.delete(`/stores/${store.id}`);
-      alert('Xóa cửa hàng thành công!');
-      await loadStores();
-      await loadUsers();
-    } catch (error) {
-      console.error('Error deleting store:', error);
-      alert(error.response?.data?.error || 'Xóa cửa hàng thất bại');
-    }
-  };
-
   const resetForm = () => {
     setFormData({
       name: '',
@@ -577,12 +561,6 @@ function Stores() {
                                 }`}
                               >
                                 {store.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteStore(store)}
-                                className="text-red-600 hover:text-red-700 font-medium text-sm"
-                              >
-                                Xóa
                               </button>
                             </div>
                           </td>

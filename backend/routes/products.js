@@ -301,43 +301,14 @@ router.delete('/:id', authorize('admin'), auditLog('delete', 'product'), async (
       return res.status(403).json({ error: 'Bạn chỉ có thể xóa sản phẩm trong chuỗi cửa hàng của mình' });
     }
 
-    // Check if product is being used in any order_items
-    const orderItemsCount = await queryOne(
-      'SELECT COUNT(*) as count FROM order_items WHERE product_id = ?',
-      [req.params.id]
-    );
-
-    if (orderItemsCount && orderItemsCount.count > 0) {
-      // Product is being used in orders, set status to 'inactive' instead of deleting
-      await execute('UPDATE products SET status = ? WHERE id = ?', ['inactive', req.params.id]);
-      return res.json({ 
-        message: 'Sản phẩm đang được sử dụng trong đơn hàng. Đã chuyển sang trạng thái không hoạt động thay vì xóa.',
-        action: 'deactivated'
-      });
-    }
-
-    // Product is not being used, safe to delete
-    await execute('DELETE FROM products WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Product deleted successfully' });
+    // Quy ước: "Xóa" = luôn chỉ đổi sang inactive, không DELETE để giữ lịch sử đơn hàng và báo cáo
+    await execute('UPDATE products SET status = ? WHERE id = ?', ['inactive', req.params.id]);
+    return res.json({
+      message: 'Đã ngừng kinh doanh sản phẩm. Sản phẩm được ẩn khỏi danh sách chọn khi tạo đơn.',
+      action: 'deactivated'
+    });
   } catch (error) {
     console.error('Delete product error:', error);
-    
-    // Handle foreign key constraint error specifically
-    if (error.code === 'ER_ROW_IS_REFERENCED_2' || error.errno === 1451) {
-      // Try to deactivate instead
-      try {
-        await execute('UPDATE products SET status = ? WHERE id = ?', ['inactive', req.params.id]);
-        return res.json({ 
-          message: 'Sản phẩm đang được sử dụng trong đơn hàng. Đã chuyển sang trạng thái không hoạt động thay vì xóa.',
-          action: 'deactivated'
-        });
-      } catch (updateError) {
-        return res.status(400).json({ 
-          error: 'Không thể xóa sản phẩm vì đang được sử dụng trong đơn hàng. Vui lòng đổi trạng thái thành không hoạt động thay vì xóa.' 
-        });
-      }
-    }
-    
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });

@@ -87,7 +87,6 @@ function Products() {
       } else {
         submitData.store_id = formData.store_id;
         await api.post('/products', submitData);
-        alert('Tạo sản phẩm thành công!');
       }
       setShowModal(false);
       setEditingProduct(null);
@@ -113,14 +112,17 @@ function Products() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Bạn có chắc muốn xóa sản phẩm này?')) return;
+    if (!confirm('Bạn có chắc muốn ngừng kinh doanh sản phẩm này? Sản phẩm sẽ được ẩn khỏi danh sách chọn khi tạo đơn.')) return;
     try {
-      await api.delete(`/products/${id}`);
-      alert('Xóa sản phẩm thành công!');
+      const res = await api.delete(`/products/${id}`);
+      const msg = res.data?.action === 'deactivated'
+        ? 'Đã ẩn/ngừng kinh doanh sản phẩm.'
+        : (res.data?.message || 'Đã xử lý xong.');
+      alert(msg);
       await loadProducts();
     } catch (error) {
       console.error('Error deleting product:', error);
-      alert(error.response?.data?.error || 'Có lỗi xảy ra khi xóa sản phẩm');
+      alert(error.response?.data?.error || 'Có lỗi xảy ra khi xử lý sản phẩm');
     }
   };
 

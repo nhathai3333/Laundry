@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../utils/api';
-import { isAdmin, isEmployer, getAuth } from '../utils/auth';
+import { isAdmin, isEmployer, getAuth, isRoot } from '../utils/auth';
 import { format, getDaysInMonth } from 'date-fns';
 import { getSavedFilters, saveFilters } from '../utils/filterStorage';
 import { printBill } from '../utils/printBill';
@@ -207,7 +207,6 @@ function Orders() {
         await api.patch(`/orders/${order.id}/debt`);
       }
       loadOrders();
-      alert('Đã chuyển đơn sang Ghi nợ. Vào menu Ghi nợ để thanh toán khi khách trả.');
     } catch (error) {
       alert(error.response?.data?.error || 'Thao tác thất bại');
     }
@@ -647,13 +646,15 @@ function Orders() {
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Trạng thái</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Số SP</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tổng tiền</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Thao tác</th>
+                  {isRoot() && (
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Thao tác</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {orders.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={isRoot() ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
                       Chưa có đơn hàng
                     </td>
                   </tr>
@@ -680,42 +681,44 @@ function Orders() {
                       <td className="px-4 py-3 text-right font-bold text-gray-800">
                         {new Intl.NumberFormat('vi-VN').format(parseFloat(order.total_amount) || 0)} đ
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        {order.status === 'created' && (
-                        <div className="flex gap-1.5 sm:gap-2 flex-nowrap justify-center overflow-x-auto">
-                          <button
-                            onClick={() => handleCompleteClick(order)}
-                            className="flex-shrink-0 px-2 sm:px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 whitespace-nowrap"
-                          >
-                            Hoàn thành
-                          </button>
-                          <button
-                            onClick={() => handleMarkDebt(order)}
-                            className="flex-shrink-0 px-2 sm:px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600 whitespace-nowrap"
-                          >
-                            Ghi nợ
-                          </button>
-                          <button
-                            onClick={async () => {
-                              setPrinting(true);
-                              try {
-                                const result = await printBill(order.id);
-                                alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
-                              } catch (printError) {
-                                console.error('Print error:', printError);
-                                alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
-                              } finally {
-                                setPrinting(false);
-                              }
-                            }}
-                            disabled={printing}
-                            className="flex-shrink-0 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
-                          >
-                            {printing ? 'Đang in...' : 'In bill'}
-                          </button>
-                        </div>
+                      {isRoot() && (
+                        <td className="px-4 py-3 text-center">
+                          {order.status === 'created' && (
+                          <div className="flex gap-1.5 sm:gap-2 flex-nowrap justify-center overflow-x-auto">
+                            <button
+                              onClick={() => handleCompleteClick(order)}
+                              className="flex-shrink-0 px-2 sm:px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 whitespace-nowrap"
+                            >
+                              Hoàn thành
+                            </button>
+                            <button
+                              onClick={() => handleMarkDebt(order)}
+                              className="flex-shrink-0 px-2 sm:px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600 whitespace-nowrap"
+                            >
+                              Ghi nợ
+                            </button>
+                            <button
+                              onClick={async () => {
+                                setPrinting(true);
+                                try {
+                                  const result = await printBill(order.id);
+                                  alert(`Bill đã được in! (Phương thức: ${result.method === 'bluetooth' ? 'Bluetooth' : 'Server'})`);
+                                } catch (printError) {
+                                  console.error('Print error:', printError);
+                                  alert(printError.message || 'In bill thất bại. Vui lòng kiểm tra kết nối máy in.');
+                                } finally {
+                                  setPrinting(false);
+                                }
+                              }}
+                              disabled={printing}
+                              className="flex-shrink-0 px-2 sm:px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+                            >
+                              {printing ? 'Đang in...' : 'In bill'}
+                            </button>
+                          </div>
+                        )}
+                        </td>
                       )}
-                      </td>
                     </tr>
                   ))
                 )}
@@ -730,7 +733,7 @@ function Orders() {
                     <td className="px-4 py-3 text-right text-green-600">
                       {new Intl.NumberFormat('vi-VN').format(orders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0))} đ
                     </td>
-                    <td className="px-4 py-3"></td>
+                    {isRoot() && <td className="px-4 py-3"></td>}
                   </tr>
                 </tfoot>
               )}
